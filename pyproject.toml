@@ -1,0 +1,13 @@
+[project]
+name = "browser-agent-team"
+version = "0.1.0"
+description = "Browser Agent Team Command Center - multi-agent browser automation via Claude Code"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "browser-use>=0.2.0",
+    "langchain-openai>=0.3.0",
+    "playwright>=1.40.0",
+]
+
+[tool.uv]
+python-preference = "managed"

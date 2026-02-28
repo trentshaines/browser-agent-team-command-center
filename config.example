@@ -1,0 +1,19 @@
+# Copy this to .env and fill in your values
+# cp config.example .env
+
+# === Pick your provider (fill in one or both) ===
+
+# OpenRouter (get key at https://openrouter.ai/keys)
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
+
+# MiniMax direct (get key at https://platform.minimax.io)
+MINIMAX_API_KEY=your-minimax-key-here
+
+# === Or use any OpenAI-compatible API ===
+# LLM_BASE_URL=https://your-provider.com/v1
+# LLM_API_KEY=your-key
+
+# === Model (auto-detects provider from model name) ===
+# OpenRouter models: google/gemini-2.0-flash-001, deepseek/deepseek-chat-v3-0324
+# MiniMax direct:   MiniMax-M2.5, MiniMax-M2.1
+BROWSER_AGENT_MODEL=google/gemini-2.0-flash-001
