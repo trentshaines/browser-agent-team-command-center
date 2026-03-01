@@ -5,6 +5,7 @@
   import { sessionsStore } from '$lib/stores/sessions';
   import { PlusIcon, Trash2Icon, BotIcon, LogOutIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
+  import ThemePicker from '$lib/components/ThemePicker.svelte';
   import { cn } from '$lib/utils';
 
   let deletingId = $state<string | null>(null);
@@ -95,6 +96,7 @@
           </div>
         {/if}
         <span class="text-sm text-text-muted truncate flex-1">{$authStore.user.username}</span>
+        <ThemePicker />
         <Button
           variant="danger"
           onclick={() => authStore.logout().then(() => goto('/login'))}
