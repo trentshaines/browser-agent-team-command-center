@@ -147,7 +147,7 @@
 
   <!-- Tabs / drag handle -->
   <header
-    class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5 {moveStart ? 'cursor-grabbing' : 'cursor-grab'}"
+    class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5"
     onpointerdown={onHeaderDown}
   >
     <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
