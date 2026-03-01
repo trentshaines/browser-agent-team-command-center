@@ -28,7 +28,6 @@
 <div
   class={cn(
     'flex items-center gap-2 px-3 py-3 text-xs font-medium',
-    'border-b border-(--border)/60 bg-black/4',
     className
   )}
   role="status"

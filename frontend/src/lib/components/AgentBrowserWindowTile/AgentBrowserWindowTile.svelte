@@ -165,10 +165,6 @@
     onpointerup={onResizePointerUp}
     onpointercancel={onResizePointerUp}
   >
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-      <line x1="9" y1="2" x2="2" y2="9"/>
-      <line x1="9" y1="6" x2="6" y2="9"/>
-    </svg>
   </div>
 {/snippet}
 
