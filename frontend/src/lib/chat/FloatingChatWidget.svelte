@@ -90,9 +90,12 @@
   }
 
   // Header: drag to move widget
+  // Track whether a drag actually moved — if not, let the click through to buttons
+  let didDrag = $state(false);
+
   function onHeaderDown(e: PointerEvent) {
-    if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
+    didDrag = false;
     moveStart = { mx: e.clientX, my: e.clientY, wx: widgetLeft, wy: widgetTop };
     window.addEventListener('pointermove', onHeaderMove);
     window.addEventListener('pointerup', onHeaderUp);
@@ -101,15 +104,26 @@
 
   function onHeaderMove(e: PointerEvent) {
     if (!moveStart) return;
-    widgetLeft = Math.max(0, Math.min(window.innerWidth - widgetW, moveStart.wx + (e.clientX - moveStart.mx)));
-    widgetTop = Math.max(0, Math.min(window.innerHeight - widgetH, moveStart.wy + (e.clientY - moveStart.my)));
+    const dx = e.clientX - moveStart.mx;
+    const dy = e.clientY - moveStart.my;
+    if (!didDrag && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+    didDrag = true;
+    widgetLeft = Math.max(0, Math.min(window.innerWidth - widgetW, moveStart.wx + dx));
+    widgetTop = Math.max(0, Math.min(window.innerHeight - widgetH, moveStart.wy + dy));
   }
 
-  function onHeaderUp() {
+  function onHeaderUp(e: PointerEvent) {
+    const wasDrag = didDrag;
     moveStart = null;
+    didDrag = false;
     window.removeEventListener('pointermove', onHeaderMove);
     window.removeEventListener('pointerup', onHeaderUp);
     window.removeEventListener('pointercancel', onHeaderUp);
+    // If it wasn't a drag, simulate a click on the original target (for tab buttons)
+    if (!wasDrag) {
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (target instanceof HTMLElement) target.click();
+    }
   }
 
   function mockSend(content: string) {
@@ -145,7 +159,7 @@
 
     <!-- Tabs / drag handle -->
     <header
-      class="shrink-0 border-b border-white/15 px-3 py-2.5 bg-white/5"
+      class="shrink-0 border-b border-white/15 px-3 py-2.5 bg-white/5 cursor-grab active:cursor-grabbing touch-none"
       onpointerdown={onHeaderDown}
     >
       <div class="flex items-center gap-1">

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fade, scale } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
+  import { cn } from '$lib/utils';
   import ChatPanel from '$lib/chat/ChatPanel.svelte';
   import ProgressPanel from '$lib/chat/ProgressPanel.svelte';
   import type { Message } from '$lib/api';
@@ -92,13 +93,16 @@
       >
         <!-- Left: Browser view (screenshot or live iframe) -->
         <div class="relative flex-[7] min-w-0">
-          {#if isTakeover && liveUrl}
+          {#if liveUrl}
             <iframe
               src={liveUrl}
               title="Live browser session"
-              class="size-full border-0"
+              class={cn('size-full border-0 absolute inset-0', !isTakeover && 'pointer-events-none')}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
             ></iframe>
+            {#if !isTakeover}
+              <img {src} {alt} class="size-full object-cover absolute inset-0 pointer-events-none" draggable="false" />
+            {/if}
           {:else}
             <img {src} {alt} class="size-full object-cover" draggable="false" />
           {/if}

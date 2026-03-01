@@ -46,16 +46,24 @@ client = AsyncBrowserUse(api_key=os.environ["BROWSER_USE_API_KEY"])
 # BrowserAgent — autonomous, runs a task to completion
 # ---------------------------------------------------------------------------
 
+_SERVER_EVENT_NAMES = {
+	"agent_started": "agent_spawned",
+	"agent_completed": "agent_status",
+	"step": "agent_step",
+}
+
+
 class BrowserAgent:
 	"""Autonomous browser agent that handles judging, handoff, correction,
 	and recovery internally. Call run() and wait for it to finish."""
 
-	def __init__(self, client: AsyncBrowserUse, prompt: str):
+	def __init__(self, client: AsyncBrowserUse, prompt: str,
+	             on_event=None, name: str = ""):
 		self.id = str(uuid.uuid4())
 		self.client = client
 		self.prompt = prompt
 		self.on_event = on_event
-		self.name = name
+		self.name = name or prompt[:30]
 		self.state = AgentState.PENDING
 		self.task_id: str | None = None
 		self.session_id: str | None = None
@@ -69,7 +77,19 @@ class BrowserAgent:
 		self._human_context: str = ""
 		self._printed_urls: bool = False
 
-	# -- low-level helpers (unchanged) ------------------------------------
+	# -- low-level helpers ------------------------------------------------
+
+	def _emit(self, event_type: EventType, data: dict) -> None:
+		"""Emit an event via callback (if set) or global event_queue fallback."""
+		if self.on_event is not None:
+			name = _SERVER_EVENT_NAMES.get(event_type.value, event_type.value)
+			try:
+				loop = asyncio.get_running_loop()
+				loop.create_task(self.on_event(name, data))
+			except RuntimeError:
+				pass
+		else:
+			add_event(event_type, data)
 
 	def _log(self, action: LogAction, content: str,
 	         step: TaskStepView | None = None, handoff_url: str | None = None) -> None:
@@ -79,7 +99,7 @@ class BrowserAgent:
 			data.update(step=step.number, url=step.url, actions=step.actions)
 		if handoff_url:
 			data["handoff_url"] = handoff_url
-		add_event(event_type, data)
+		self._emit(event_type, data)
 		if step and step.url and step.url.startswith(("http://", "https://")):
 			self.last_url = step.url
 
@@ -186,13 +206,13 @@ class BrowserAgent:
 		"""Create session and begin the initial task."""
 		self.state = AgentState.RUNNING
 		await self._create_session()
-		add_event(EventType.AGENT_STARTED, {
+		self._emit(EventType.AGENT_STARTED, {
 			"agent_id": self.id, "prompt": self.prompt,
 			"session_id": self.session_id, "live_url": self.live_url,
 		})
 		async for step in self._stream_task(self.prompt):
 			yield step
-		add_event(EventType.AGENT_COMPLETED, {
+		self._emit(EventType.AGENT_COMPLETED, {
 			"agent_id": self.id, "prompt": self.prompt,
 			"output": self.result.output or "",
 		})
@@ -230,7 +250,7 @@ class BrowserAgent:
 
 			# Handoff: wait for human, then build continuation stream
 			await self.wait_for_human()
-			add_event(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": self.id})
+			self._emit(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": self.id})
 			print(f"[{label}] Human done, continuing on same session...")
 			stream = self._continue_after_handoff_stream()
 
@@ -250,7 +270,7 @@ class BrowserAgent:
 				f"[{label}] step {step.number}: {step.next_goal}"
 				+ (f"  url={step.url}" if step.url else "")
 			)
-			add_event(EventType.STEP, {
+			self._emit(EventType.STEP, {
 				"agent_id": self.id, "step": step.number,
 				"goal": step.next_goal, "url": step.url, "actions": step.actions,
 			})
@@ -278,7 +298,7 @@ class BrowserAgent:
 						return "__HANDOFF__"
 					# Off track — stop task and return correction
 					self._log(LogAction.JUDGE, f"OFF TRACK: {verdict}", step)
-					add_event(EventType.CORRECTION, {"agent_id": self.id, "correction": verdict})
+					self._emit(EventType.CORRECTION, {"agent_id": self.id, "correction": verdict})
 					print(f"[{label}] JUDGE: Off track at step {step.number}, stopping task...")
 					try:
 						await self.client.tasks.update_task(self.task_id, action="stop")
@@ -318,7 +338,7 @@ class BrowserAgent:
 		"""Full handoff ceremony: log, emit event, print, pause."""
 		handoff_url = await self.get_share_url()
 		self._log(LogAction.HANDOFF, reason, step, handoff_url=handoff_url)
-		add_event(EventType.HANDOFF, {
+		self._emit(EventType.HANDOFF, {
 			"agent_id": self.id, "message": reason,
 			"handoff_url": handoff_url, "source": source,
 		})
@@ -384,7 +404,7 @@ class BrowserAgent:
 				else:
 					await self._do_handoff(label, detail, source="goal_check")
 					await self.wait_for_human()
-					add_event(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": self.id})
+					self._emit(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": self.id})
 					print(f"[{label}] Human done, continuing...")
 					try:
 						await self._execute_with_judging(
@@ -417,7 +437,7 @@ class BrowserAgent:
 				print(f"[{label}] Starting from: {last_url}")
 
 			try:
-				add_event(EventType.RECOVERY_STARTED, {
+				self._emit(EventType.RECOVERY_STARTED, {
 					"agent_id": self.id, "attempt": attempt + 1,
 					"recovery_prompt": recovery_prompt, "start_url": last_url,
 				})
@@ -428,7 +448,7 @@ class BrowserAgent:
 				continue
 
 			if self.state == AgentState.COMPLETE:
-				add_event(EventType.RECOVERY_COMPLETED, {"agent_id": self.id})
+				self._emit(EventType.RECOVERY_COMPLETED, {"agent_id": self.id})
 				print(f"[{label}] Recovered successfully.")
 				return
 
@@ -454,12 +474,37 @@ class BrowserAgent:
 class Orchestrator:
 	"""Splits goals into sub-tasks, launches autonomous agents, checks completion."""
 
-	def __init__(self):
+	def __init__(self, on_event=None):
+		self._on_event = on_event
 		self._agents: list[BrowserAgent] = []
 		self._tasks: dict[str, list[BrowserAgent]] = {}
 		self._running_tasks: dict[str, asyncio.Task] = {}
 
+	def _emit(self, event_type: EventType, data: dict) -> None:
+		"""Emit an event via callback (if set) or global event_queue fallback."""
+		if self._on_event is not None:
+			name = _SERVER_EVENT_NAMES.get(event_type.value, event_type.value)
+			try:
+				loop = asyncio.get_running_loop()
+				loop.create_task(self._on_event(name, data))
+			except RuntimeError:
+				pass
+		else:
+			add_event(event_type, data)
+
 	# -- public API (used by server.py) -----------------------------------
+
+	def add_prompt(self, prompt: str, name: str = "") -> "BrowserAgent":
+		"""Add an agent for the given prompt. Returns the agent."""
+		agent = BrowserAgent(client, prompt, on_event=self._on_event, name=name)
+		self._agents.append(agent)
+		return agent
+
+	async def run(self) -> None:
+		"""Run all agents added via add_prompt in parallel."""
+		if not self._agents:
+			return
+		await asyncio.gather(*[a.run() for a in self._agents], return_exceptions=True)
 
 	def create_task(self, prompt: str) -> tuple[str, list[BrowserAgent]]:
 		"""Decompose prompt into sub-tasks, create agents, launch them.
@@ -472,7 +517,7 @@ class Orchestrator:
 
 		agents: list[BrowserAgent] = []
 		for sub_prompt in sub_prompts:
-			agent = BrowserAgent(client, sub_prompt)
+			agent = BrowserAgent(client, sub_prompt, on_event=self._on_event)
 			self._agents.append(agent)
 			agents.append(agent)
 
@@ -527,7 +572,7 @@ class Orchestrator:
 			print(f"\n{'=' * 60}")
 			print(f"[Orchestrator] Round {goal_round + 1} summary:\n{summary}")
 			print(f"{'=' * 60}\n")
-			add_event(EventType.SUMMARY, {"task_id": task_id, "summary": summary})
+			self._emit(EventType.SUMMARY, {"task_id": task_id, "summary": summary})
 
 			# Check if overall goal is met
 			all_outputs = summary
@@ -539,7 +584,7 @@ class Orchestrator:
 
 			if verdict == "HUMAN":
 				print(f"[Orchestrator] Overall goal needs human: {detail}")
-				add_event(EventType.HANDOFF, {
+				self._emit(EventType.HANDOFF, {
 					"task_id": task_id,
 					"message": detail,
 					"source": "orchestrator_goal_check",
@@ -551,7 +596,7 @@ class Orchestrator:
 			follow_up_prompts = task_refiner(detail)
 			agents = []
 			for sub_prompt in follow_up_prompts:
-				agent = BrowserAgent(client, sub_prompt)
+				agent = BrowserAgent(client, sub_prompt, on_event=self._on_event)
 				self._agents.append(agent)
 				self._tasks[task_id].append(agent)
 				agents.append(agent)

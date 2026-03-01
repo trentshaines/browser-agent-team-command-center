@@ -277,13 +277,23 @@
     </button>
     <div class="flex-1 min-h-0 p-2">
       <div class="overflow-hidden size-full rounded-lg relative">
-        {#if isTakeover && liveUrl}
+        {#if liveUrl}
           <iframe
             src={liveUrl}
             title="Live browser session"
-            class="size-full border-0"
+            class={cn('size-full border-0 absolute inset-0', !isTakeover && 'pointer-events-none')}
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
           ></iframe>
+          {#if !isTakeover}
+            <img
+              {src}
+              {alt}
+              class={cn('size-full pointer-events-none absolute inset-0', objectFit, imageClass)}
+              loading="lazy"
+              decoding="async"
+              draggable="false"
+            />
+          {/if}
         {:else}
           <img
             {src}
