@@ -243,8 +243,10 @@ Return the JSON result from the script exactly as-is."""
                                     logger.info("Agent complete: run=%s steps=%d", agent_run_id, len(steps))
                                 except Exception:
                                     logger.warning("Failed to update AgentRun on completion", exc_info=True)
-                # ResultMessage has the final synthesized result
-                elif hasattr(event, "result") and event.result and not full_response:
+                # ResultMessage has the final synthesized result — always prefer it
+                # (delta accumulation from include_partial_messages can produce garbled
+                # mid-sentence fragments; ResultMessage is the authoritative clean output)
+                elif hasattr(event, "result") and event.result:
                     full_response = event.result
 
         await _save_and_complete(session_id_str, message_id, full_response, db)
