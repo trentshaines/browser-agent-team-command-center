@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import uuid
@@ -124,8 +125,16 @@ Return the JSON result from the script exactly as-is."""
         agent_run_id = active_runs.get(sdk_id)
         transcript_path = input_data.get("agent_transcript_path")
 
-        steps = _parse_browser_steps(transcript_path)
-        final = _parse_final_result(transcript_path)
+        # Parse transcript once in thread pool (blocking I/O)
+        messages = []
+        if transcript_path:
+            try:
+                messages = await asyncio.to_thread(_load_transcript, transcript_path)
+            except Exception:
+                logger.warning("Failed to load transcript from %s", transcript_path, exc_info=True)
+
+        steps = _extract_browser_steps(messages)
+        final = _extract_final_result(messages)
 
         # Persist each browser step as an AgentRunLog row
         for step in steps:
@@ -274,66 +283,60 @@ def _build_prompt(history: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _parse_browser_steps(transcript_path: str | None) -> list[dict]:
-    """Extract browser_step records from JSONL inside Bash tool results in an agent transcript."""
-    if not transcript_path:
-        return []
+def _load_transcript(transcript_path: str) -> list:
+    """Load and parse transcript file, returning message list."""
+    data = json.loads(Path(transcript_path).read_text())
+    return data if isinstance(data, list) else data.get("messages", [])
+
+
+def _extract_browser_steps(messages: list) -> list[dict]:
+    """Extract browser_step records from pre-loaded transcript messages."""
     steps = []
-    try:
-        data = json.loads(Path(transcript_path).read_text())
-        messages = data if isinstance(data, list) else data.get("messages", [])
-        for msg in messages:
-            content = msg.get("content", [])
-            if not isinstance(content, list):
+    for msg in messages:
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
                 continue
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "tool_result":
-                    raw = block.get("content", "")
-                    if isinstance(raw, str):
-                        for line in raw.splitlines():
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                parsed = json.loads(line)
-                                if parsed.get("type") == "browser_step":
-                                    steps.append(parsed)
-                            except json.JSONDecodeError:
-                                pass
-    except Exception:
-        logger.warning("Failed to parse browser steps from %s", transcript_path, exc_info=True)
+            if block.get("type") == "tool_result":
+                raw = block.get("content", "")
+                if isinstance(raw, str):
+                    for line in raw.splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            parsed = json.loads(line)
+                            if parsed.get("type") == "browser_step":
+                                steps.append(parsed)
+                        except json.JSONDecodeError:
+                            pass
     return steps
 
 
-def _parse_final_result(transcript_path: str | None) -> dict | None:
-    """Extract the browser_result record from an agent transcript."""
-    if not transcript_path:
-        return None
-    try:
-        data = json.loads(Path(transcript_path).read_text())
-        messages = data if isinstance(data, list) else data.get("messages", [])
-        for msg in reversed(messages):
-            content = msg.get("content", [])
-            if not isinstance(content, list):
+def _extract_final_result(messages: list) -> dict | None:
+    """Extract the browser_result record from pre-loaded transcript messages."""
+    for msg in reversed(messages):
+        content = msg.get("content", [])
+        if not isinstance(content, list):
+            continue
+        for block in reversed(content):
+            if not isinstance(block, dict):
                 continue
-            for block in reversed(content):
-                if not isinstance(block, dict):
-                    continue
-                if block.get("type") == "tool_result":
-                    raw = block.get("content", "")
-                    if isinstance(raw, str):
-                        for line in reversed(raw.splitlines()):
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                parsed = json.loads(line)
-                                if parsed.get("type") == "browser_result":
-                                    return parsed
-                            except json.JSONDecodeError:
-                                pass
-    except Exception:
-        logger.warning("Failed to parse final result from %s", transcript_path, exc_info=True)
+            if block.get("type") == "tool_result":
+                raw = block.get("content", "")
+                if isinstance(raw, str):
+                    for line in reversed(raw.splitlines()):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            parsed = json.loads(line)
+                            if parsed.get("type") == "browser_result":
+                                return parsed
+                        except json.JSONDecodeError:
+                            pass
     return None
+
+

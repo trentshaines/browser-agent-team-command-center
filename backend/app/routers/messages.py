@@ -40,6 +40,14 @@ async def send_message(
     session: Annotated[Session, Depends(get_owned_session)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    # Fetch existing history BEFORE inserting new messages
+    history_result = await db.execute(
+        select(Message)
+        .where(Message.session_id == session_id)
+        .order_by(Message.created_at)
+    )
+    existing_messages = history_result.scalars().all()
+
     # Save user message
     user_msg = Message(session_id=session_id, role="user", content=data.content)
     db.add(user_msg)
@@ -55,18 +63,13 @@ async def send_message(
 
     assistant_msg_id = assistant_msg.id
 
-    # Build conversation history
-    history_result = await db.execute(
-        select(Message)
-        .where(Message.session_id == session_id)
-        .where(Message.id != assistant_msg_id)
-        .order_by(Message.created_at)
-    )
+    # Build conversation history in-memory (no second DB query needed)
     history = [
         {"role": m.role, "content": m.content}
-        for m in history_result.scalars().all()
+        for m in existing_messages
         if m.content  # skip empty placeholders
     ]
+    history.append({"role": "user", "content": data.content})
 
     async def run_orchestrator():
         async with AsyncSessionLocal() as bg_db:

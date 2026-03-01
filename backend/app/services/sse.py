@@ -13,7 +13,7 @@ class SSEBus:
         self._subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
 
     def subscribe(self, session_id: str) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue()
+        q: asyncio.Queue = asyncio.Queue(maxsize=500)
         self._subscribers[session_id].append(q)
         return q
 
@@ -28,7 +28,10 @@ class SSEBus:
     async def publish(self, session_id: str, event_name: str, data: dict) -> None:
         payload = f"event: {event_name}\ndata: {json.dumps(data)}\n\n"
         for q in list(self._subscribers.get(session_id, [])):
-            await q.put(payload)
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                pass  # drop for slow consumer
 
     async def stream(self, session_id: str) -> AsyncGenerator[str, None]:
         q = self.subscribe(session_id)

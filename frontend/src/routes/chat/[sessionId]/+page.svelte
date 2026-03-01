@@ -32,6 +32,7 @@
 
   // Smart scroll: only snap to bottom if user is already near the bottom
   let autoScroll = true;
+  let _scrollRaf: number | null = null;
 
   function onScroll() {
     if (!scrollEl) return;
@@ -95,7 +96,8 @@
       const mid = data.message_id as string;
       const prev = thinkingMap.get(mid) ?? '';
       const isFirst = prev === '';
-      thinkingMap = new Map([...thinkingMap, [mid, prev + data.thinking]]);
+      thinkingMap.set(mid, prev + data.thinking);
+      thinkingMap = thinkingMap;
       // Force scroll when thinking block first appears (it adds height to the page)
       if (isFirst) scrollToBottom(true);
       else scrollToBottom();
@@ -137,11 +139,10 @@
 
     eventSource.addEventListener('agent_log', (e) => {
       const data = JSON.parse(e.data);
-      agentRuns = agentRuns.map(r =>
-        r.id === data.agent_run_id
-          ? { ...r, steps: [...r.steps, data] }
-          : r
-      );
+      const runIdx = agentRuns.findIndex(r => r.id === data.agent_run_id);
+      if (runIdx >= 0) {
+        agentRuns[runIdx] = { ...agentRuns[runIdx], steps: [...agentRuns[runIdx].steps, data] };
+      }
       scrollToBottom();
     });
 
@@ -179,9 +180,15 @@
   }
 
   function applyDelta(messageId: string, delta: string) {
-    const idx = messageList.findIndex(m => m.id === messageId);
-    if (idx >= 0) {
-      messageList[idx] = { ...messageList[idx], content: messageList[idx].content + delta };
+    const last = messageList[messageList.length - 1];
+    if (last?.id === messageId) {
+      messageList[messageList.length - 1] = { ...last, content: last.content + delta };
+    } else {
+      // fallback for safety
+      const idx = messageList.findIndex(m => m.id === messageId);
+      if (idx >= 0) {
+        messageList[idx] = { ...messageList[idx], content: messageList[idx].content + delta };
+      }
     }
     scrollToBottom();
   }
@@ -225,7 +232,9 @@
 
   function scrollToBottom(force = false) {
     if (!force && !autoScroll) return;
-    tick().then(() => {
+    if (_scrollRaf !== null) return; // already scheduled
+    _scrollRaf = requestAnimationFrame(() => {
+      _scrollRaf = null;
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   }
