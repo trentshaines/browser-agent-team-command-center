@@ -82,7 +82,7 @@
           ai, ni: ni + 1, cx: PL + (ni + 1) * HGAP + NW / 2, cy, g,
         };
         nodes.push(node);
-        edges.push({ id: `e${eid++}`, from: prev, to: node, kind: 'seq', label: g.steps[0]?.action_type });
+        edges.push({ id: `e${eid++}`, from: prev, to: node, kind: 'seq', label: g.steps[0]?.action_type ?? undefined });
         prev = node;
       }
 
