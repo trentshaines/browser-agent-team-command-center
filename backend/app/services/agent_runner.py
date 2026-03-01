@@ -1,6 +1,6 @@
 import asyncio
 import json
-import uuid
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -8,7 +8,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 async def run_browser_agent(task: str) -> dict:
     """Run browser_agent.py as a subprocess and return parsed JSON result."""
-    python = PROJECT_ROOT / ".venv" / "bin" / "python"
+    python = sys.executable
     script = PROJECT_ROOT / "scripts" / "browser_agent.py"
 
     proc = await asyncio.create_subprocess_exec(

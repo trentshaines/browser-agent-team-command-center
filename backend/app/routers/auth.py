@@ -1,10 +1,14 @@
+import logging
 import uuid
 from typing import Annotated
 from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.config import get_settings
 from app.database import get_db
@@ -106,7 +110,8 @@ async def google_auth(
 ):
     try:
         google_user = await exchange_google_code(data.code)
-    except Exception:
+    except httpx.HTTPError as e:
+        logger.warning("Google OAuth code exchange failed: %s", e)
         raise HTTPException(status_code=400, detail="Invalid Google auth code")
 
     google_id = google_user.get("id")

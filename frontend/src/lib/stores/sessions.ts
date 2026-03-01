@@ -10,7 +10,9 @@ function createSessionsStore() {
       try {
         const data = await sessionsApi.list();
         set(data);
-      } catch {}
+      } catch (e) {
+        console.error('Failed to load sessions:', e);
+      }
     },
     async create(): Promise<Session> {
       const s = await sessionsApi.create();
@@ -28,8 +30,8 @@ function createSessionsStore() {
       update(list => {
         const idx = list.findIndex(s => s.id === id);
         if (idx < 0) return list;
-        const [s] = list.splice(idx, 1);
-        return [{ ...s, updated_at: new Date().toISOString() }, ...list];
+        const s = list[idx];
+        return [{ ...s, updated_at: new Date().toISOString() }, ...list.filter((_, i) => i !== idx)];
       });
     },
   };

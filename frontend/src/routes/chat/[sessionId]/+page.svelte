@@ -107,15 +107,15 @@
     try {
       const assistantMsg = await messagesApi.send(sessionId, content);
 
-      // Add user message (find by content from the list after POST, or re-fetch)
-      const freshMessages = await messagesApi.list(sessionId);
-      // Keep local streaming state for the last assistant message
-      const serverAssistant = freshMessages.find(m => m.id === assistantMsg.id);
-      messageList = freshMessages.map(m =>
-        m.id === assistantMsg.id ? { ...m, content: serverAssistant?.content ?? '' } : m
-      );
+      // Add both messages locally without re-fetching the full list
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        created_at: new Date().toISOString(),
+      };
+      messageList = [...messageList, userMsg, { ...assistantMsg, content: '' }];
 
-      // Update session title if it was auto-set
       await tick();
       scrollToBottom();
     } catch (e) {

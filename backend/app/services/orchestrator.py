@@ -1,11 +1,14 @@
+import logging
 import uuid
 import asyncio
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+logger = logging.getLogger(__name__)
+
 from app.models.message import Message
-from app.models.agent_run import AgentRun
+from app.models.agent_run import AgentRun, AgentRunStatus
 from app.services import sse
 from app.services.agent_runner import run_browser_agent
 from app.config import get_settings
@@ -45,7 +48,7 @@ async def run_turn(
         # Try Claude Agent SDK first
         await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
     except ImportError:
-        # Fallback to direct Anthropic API (no agent spawning)
+        logger.info("claude_agent_sdk not available, falling back to direct Anthropic API")
         await _run_with_anthropic(session_id_str, assistant_message_id, history, db, settings)
 
 
@@ -96,7 +99,7 @@ You have access to Bash to run: python scripts/browser_agent.py --task "..." --v
                 session_id=uuid.UUID(session_id_str),
                 message_id=message_id,
                 task=getattr(event, "description", "browser task"),
-                status="running",
+                status=AgentRunStatus.RUNNING,
                 started_at=datetime.now(timezone.utc),
             )
             db.add(agent_run)
