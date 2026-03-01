@@ -19,10 +19,15 @@ COPY pyproject.toml .
 # Install all Python dependencies:
 #   backend/ → FastAPI, sqlalchemy, claude-agent-sdk, etc.
 #   .        → browser-use, playwright, etc. (root pyproject.toml)
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
 RUN uv pip install --system --no-cache backend/ . \
     && playwright install chromium --with-deps
 
 RUN chmod +x backend/start.sh
+
+# claude CLI refuses --dangerously-skip-permissions when running as root
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
 WORKDIR /app/backend
 CMD ["sh", "start.sh"]
