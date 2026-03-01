@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { AgentRun } from './AgentRunPanel.svelte';
-  import { palette } from '$lib/palette';
 
   let { runs }: { runs: AgentRun[] } = $props();
 
@@ -156,7 +155,7 @@
           <path d="M0,0 L7,3 L0,6 Z" fill="var(--border)" />
         </marker>
         <marker id="g-arrow-live" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L7,3 L0,6 Z" fill="{palette.violet}" />
+          <path d="M0,0 L7,3 L0,6 Z" fill="var(--accent)" />
         </marker>
       </defs>
 
@@ -165,7 +164,7 @@
         {@const p = edgePath(e.from, e.to)}
         {@const w = Math.min(1 + e.count * 0.4, 3.5)}
         <path d={p} fill="none"
-          stroke={e.active ? palette.violet : 'var(--border)'}
+          stroke={e.active ? 'var(--accent)' : 'var(--border)'}
           stroke-width={e.active ? 2.5 : w}
           stroke-opacity={e.active ? 0.9 : 0.5}
           marker-end={e.active ? 'url(#g-arrow-live)' : 'url(#g-arrow)'}
@@ -177,7 +176,7 @@
           <text x={mx} y={my + 3.5} text-anchor="middle" font-size="8" font-family="monospace" fill="var(--text-faint)">{e.count}×</text>
         {/if}
         {#if e.active}
-          <circle r="4.5" fill="{palette.violet}" opacity="0.9">
+          <circle r="4.5" fill="var(--accent)" opacity="0.9">
             <animateMotion dur="2s" repeatCount="indefinite" path={p} />
           </circle>
         {/if}
@@ -222,7 +221,7 @@
             >{rn.totalVisits} step{rn.totalVisits !== 1 ? 's' : ''}</text>
           {/if}
           {#if rn.isLive}
-            <circle cx={rn.cx + rn.radius * 0.65} cy={rn.cy - rn.radius * 0.65} r="5.5" fill="{palette.violet}">
+            <circle cx={rn.cx + rn.radius * 0.65} cy={rn.cy - rn.radius * 0.65} r="5.5" fill="var(--accent)">
               <animate attributeName="opacity" values="1;0.2;1" dur="0.9s" repeatCount="indefinite"/>
             </circle>
           {/if}

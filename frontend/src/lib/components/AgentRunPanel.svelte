@@ -2,7 +2,7 @@
   export interface AgentStep {
     step: number;
     url?: string | null;
-    action_type?: string | null;
+    action?: string | null;
     thought?: string | null;
     evaluation?: string | null;
     success?: boolean | null;
@@ -45,7 +45,7 @@
           class="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover transition-colors"
         >
           {#if run.status === 'running'}
-            <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0"></span>
           {:else if run.status === 'complete'}
             <span class="w-1.5 h-1.5 rounded-full bg-status-emerald shrink-0"></span>
           {:else}
@@ -75,8 +75,8 @@
                 <div class="px-3 py-1.5 border-b border-border-subtle last:border-0">
                   <div class="flex items-center gap-2 text-[11px]">
                     <span class="text-text-faint w-4 shrink-0 text-right opacity-50">{step.step}</span>
-                    {#if step.action_type}
-                      <span class="bg-surface-hover px-1.5 py-0.5 rounded text-text-muted font-mono shrink-0 text-[10px] border border-border-subtle">{step.action_type}</span>
+                    {#if step.action}
+                      <span class="bg-surface-hover px-1.5 py-0.5 rounded text-text-muted font-mono shrink-0 text-[10px] border border-border-subtle">{step.action}</span>
                     {/if}
                     {#if step.url}
                       <span class="text-accent truncate min-w-0 text-[10px]">{step.url}</span>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { PlusIcon } from "lucide-svelte";
   import { FloatingChatWidget } from "$lib/chat";
   import AgentTiles from "$lib/components/AgentTiles.svelte";
@@ -9,10 +9,19 @@
   import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
+  import { goto } from '$app/navigation';
 
   let createModalOpen = $state(false);
   let spawnModalOpen = $state(false);
   let sessionId = $state<string | null>(null);
+
+  /** Push or remove ?session= in the URL without a full navigation. */
+  function syncSessionToUrl(id: string | null) {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set('session', id);
+    else url.searchParams.delete('session');
+    goto(url.pathname + url.search, { replaceState: true, noScroll: true });
+  }
 
   // Chat state
   let messageList = $state<WidgetMessage[]>([]);
@@ -31,17 +40,28 @@
   // Map agent_run_id → agent name for chat attribution
   const agentNames = new Map<string, string>();
 
-  // Map action_type to a short verb phrase for Slack-like chat messages
-  function formatAgentAction(actionType: string, url: string): string {
+  // Map backend LogAction to a short verb phrase for Slack-like chat messages
+  function formatAgentAction(action: string, url: string | null): string {
+    if (!url) {
+      switch (action) {
+        case 'thinking': return 'Thinking…';
+        case 'output': return 'Finished';
+        case 'retry': return 'Retrying…';
+        case 'error': return 'Error encountered';
+        case 'paused': return 'Paused';
+        case 'resumed': return 'Resumed';
+        case 'judge': return 'Evaluating results…';
+        case 'correction': return 'Correcting…';
+        default: return action;
+      }
+    }
     const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-    switch (actionType) {
-      case 'navigate': return `Navigating to ${host}…`;
-      case 'click': return `Clicked on ${host}`;
-      case 'extract': return `Extracting data from ${host}`;
-      case 'type': return `Typing on ${host}`;
-      case 'scroll': return `Scrolling on ${host}`;
-      case 'wait': return `Waiting…`;
-      default: return `${actionType} on ${host}`;
+    switch (action) {
+      case 'navigation': return `Navigating to ${host}…`;
+      case 'thinking': return `Thinking about ${host}…`;
+      case 'output': return `Done with ${host}`;
+      case 'handoff': return `Handing off to ${host}…`;
+      default: return `${action} on ${host}`;
     }
   }
 
@@ -70,9 +90,15 @@
 
     eventSource.addEventListener('done', (e) => {
       const data = JSON.parse(e.data);
-      if (data.message_id !== cancelledMessageId) {
-        const idx = messageList.findIndex(m => m.id === data.message_id);
-        if (idx >= 0) messageList[idx] = { ...messageList[idx], content: data.content };
+      // Backend sends { agents: [{ agent_id, status, result }] }
+      if (data.agents && Array.isArray(data.agents)) {
+        for (const a of data.agents) {
+          agentRuns = agentRuns.map(r =>
+            r.id === a.agent_id
+              ? { ...r, status: a.status === 'complete' ? 'complete' : 'error', result: a.result }
+              : r
+          );
+        }
       }
       streaming = false;
       agentFrames = Object.fromEntries(
@@ -129,7 +155,7 @@
         messageList = [...messageList, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: formatAgentAction(data.action_type, data.url),
+          content: formatAgentAction(data.action, data.url),
           created_at: new Date().toISOString(),
           senderName: name,
         }];
@@ -219,6 +245,7 @@
   async function onProjectLaunched(id: string, goal: string, agents: AgentPlan[]) {
     // Reset state for new session
     sessionId = id;
+    syncSessionToUrl(id);
     createModalOpen = false;
     messageList = [];
     agentRuns = [];
@@ -245,6 +272,16 @@
     }
   }
 
+  // On mount, restore session from URL query param and reconnect SSE.
+  onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    const restored = params.get('session');
+    if (restored) {
+      sessionId = restored;
+      connectSSE(restored);
+    }
+  });
+
   onDestroy(() => {
     closeSSE();
   });
@@ -256,13 +293,13 @@
 
 <div class="min-h-screen bg-background flex flex-col relative overflow-hidden">
   <!-- Animated gradient background -->
-  <div class="absolute inset-0 -z-0 overflow-hidden" aria-hidden="true">
+  <div class="absolute inset-0 z-0 overflow-hidden pointer-events-none" aria-hidden="true">
     <div class="gradient-orb orb-1"></div>
     <div class="gradient-orb orb-2"></div>
     <div class="gradient-orb orb-3"></div>
     <div class="gradient-orb orb-4"></div>
   </div>
-  <header class="relative z-10 flex items-center justify-between border-b border-white/30 bg-white/40 backdrop-blur-sm px-6 py-3">
+  <header class="relative z-10 flex items-center justify-between border-b border-white/15 backdrop-blur-xl px-6 py-3">
     <div class="flex items-center gap-2.5">
       <Logo size={18} />
       <span class="text-sm font-semibold text-text">James</span>
@@ -330,7 +367,7 @@
     height: 45vw;
     top: -10%;
     left: -10%;
-    background: radial-gradient(circle, rgba(124,58,237,0.4) 0%, rgba(124,58,237,0.15) 40%, transparent 70%);
+    background: radial-gradient(circle, rgba(145,70,255,0.4) 0%, rgba(145,70,255,0.15) 40%, transparent 70%);
     animation: drift-1 18s ease-in-out infinite;
   }
 

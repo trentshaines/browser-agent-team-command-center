@@ -42,14 +42,7 @@
   } = $props();
 
   // Fallback mock messages used only when no external messages are provided.
-  let mockMessages = $state<WidgetMessage[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: 'Create a project with the + button to get started.',
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  let mockMessages = $state<WidgetMessage[]>([]);
 
   const controlled = $derived(externalOnSend !== undefined);
   const displayMessages = $derived(controlled ? (externalMessages ?? []) : mockMessages);

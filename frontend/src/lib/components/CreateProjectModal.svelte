@@ -16,6 +16,21 @@
     onLaunch: (sessionId: string, goal: string, agents: AgentPlan[]) => void;
   } = $props();
 
+  const suggestions = [
+    'Compare prices for AirPods Pro across Amazon, Best Buy, and Walmart',
+    'Research the top 5 project management tools and summarize their pricing',
+    'Find flights from SF to NYC for next weekend on Google Flights, Kayak, and Skyscanner',
+    'Monitor competitor pricing on 3 e-commerce sites and compile a report',
+    'Scrape job listings for "senior frontend engineer" from LinkedIn, Indeed, and Glassdoor',
+    'Find the best-rated Italian restaurants in Manhattan on Yelp, Google Maps, and TripAdvisor',
+    'Research and compare cloud hosting plans from AWS, GCP, and Azure',
+    'Gather reviews for the latest MacBook Pro from 5 different tech review sites',
+    'Check availability and pricing of a PS5 across major retailers',
+    'Research visa requirements for US citizens traveling to Japan, Korea, and Thailand',
+    'Find and compare gym membership prices at 4 gyms near downtown Seattle',
+    'Collect the latest AI research papers from arxiv on multi-agent systems',
+  ];
+
   // Step: 'prompt' | 'review'
   let step = $state<'prompt' | 'review'>('prompt');
   let prompt = $state('');
@@ -23,6 +38,7 @@
   let launching = $state(false);
   let planError = $state<string | null>(null);
   let promptInputEl = $state<HTMLTextAreaElement | null>(null);
+  let currentSuggestion = $state('');
 
   // Plan results (editable)
   let title = $state('');
@@ -72,6 +88,10 @@
     planError = null;
   }
 
+  function pickSuggestion() {
+    currentSuggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
+  }
+
   function reset() {
     step = 'prompt';
     prompt = '';
@@ -80,10 +100,12 @@
     planning_loading = false;
     launching = false;
     planError = null;
+    currentSuggestion = '';
   }
 
   $effect(() => {
     if (!isOpen) return;
+    pickSuggestion();
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
@@ -103,6 +125,22 @@
     }
   });
 
+  // Ghost text: show the remaining part of the suggestion that hasn't been typed yet
+  const ghostText = $derived.by(() => {
+    if (!currentSuggestion || prompt.length === 0) return currentSuggestion;
+    if (currentSuggestion.toLowerCase().startsWith(prompt.toLowerCase())) {
+      return currentSuggestion.slice(prompt.length);
+    }
+    return '';
+  });
+
+  function acceptSuggestion(e: KeyboardEvent) {
+    if (e.key === 'Tab' && ghostText) {
+      e.preventDefault();
+      prompt = prompt + ghostText;
+    }
+  }
+
   const canPlan = $derived(prompt.trim().length > 0);
   const canLaunch = $derived(agents.length > 0 && agents.every(a => a.name.trim() && a.task.trim()));
   const busy = $derived(planning_loading || launching);
@@ -112,7 +150,7 @@
   <!-- Backdrop -->
   <div
     transition:fade={{ duration: 220 }}
-    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 px-4"
     role="presentation"
     onclick={() => { if (!busy) onClose(); }}
   >
@@ -125,13 +163,13 @@
     >
       <!-- Glass halo -->
       <div
-        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
+        class="absolute -inset-2 rounded-[1.5rem] bg-white/30 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
         aria-hidden="true"
       ></div>
 
       <!-- Modal panel -->
       <div
-        class="relative rounded-2xl overflow-hidden bg-surface/85 backdrop-blur-2xl border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
+        class="relative rounded-2xl overflow-hidden bg-surface border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
         role="dialog"
         aria-modal="true"
         aria-label="Create new project"
@@ -187,16 +225,33 @@
           <div class="p-5 flex flex-col gap-4">
             <div class="flex flex-col gap-1.5">
               <label for="project-prompt" class="text-xs font-medium text-text-muted">What do you want to accomplish?</label>
-              <textarea
-                id="project-prompt"
-                bind:this={promptInputEl}
-                bind:value={prompt}
-                rows={4}
-                disabled={planning_loading}
-                placeholder="e.g. Compare prices for AirPods Pro across Amazon, Best Buy, and Walmart"
-                class="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-text placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/60 transition-all resize-none leading-relaxed disabled:opacity-50"
-                onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canPlan && !planning_loading) planTeam(); }}
-              ></textarea>
+              <div class="relative">
+                <textarea
+                  id="project-prompt"
+                  bind:this={promptInputEl}
+                  bind:value={prompt}
+                  rows={4}
+                  disabled={planning_loading}
+                  class="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-text caret-text focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/60 transition-all resize-none leading-relaxed disabled:opacity-50"
+                  onkeydown={(e) => {
+                    acceptSuggestion(e);
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canPlan && !planning_loading) planTeam();
+                  }}
+                ></textarea>
+                {#if ghostText}
+                  <div
+                    aria-hidden="true"
+                    class="absolute inset-0 px-3 py-2 text-sm leading-relaxed pointer-events-none whitespace-pre-wrap break-words overflow-hidden"
+                  >
+                    <span class="invisible">{prompt}</span><span class="text-text-faint/40">{ghostText}</span>
+                  </div>
+                {/if}
+                {#if ghostText}
+                  <div class="absolute right-2 bottom-2 px-1.5 py-0.5 rounded bg-white/20 border border-border/40 text-[10px] text-text-faint pointer-events-none flex items-center gap-1">
+                    <kbd class="font-mono text-[10px]">Tab</kbd>
+                  </div>
+                {/if}
+              </div>
             </div>
 
             {#if planError}

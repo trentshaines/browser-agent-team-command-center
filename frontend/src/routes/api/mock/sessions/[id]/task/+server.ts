@@ -48,7 +48,7 @@ export async function POST({ params, request }) {
 				agent_run_id: agentId,
 				step: 1,
 				url: 'https://example.com',
-				action_type: 'navigate',
+				action: 'navigate',
 				thought: `Navigating to complete: ${agent.task.slice(0, 50)}`,
 				success: true,
 			});

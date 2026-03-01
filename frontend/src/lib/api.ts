@@ -86,7 +86,7 @@ export function streamUrl(sessionId: string): string {
 export interface AgentRunStep {
   step: number;
   url?: string | null;
-  action_type?: string | null;
+  action?: string | null;
   thought?: string | null;
   evaluation?: string | null;
   success?: boolean | null;

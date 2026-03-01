@@ -23,7 +23,7 @@ export interface AgentColor {
 }
 
 export const AGENT_COLORS: readonly AgentColor[] = [
-  { hex: '#7c3aed', bg: 'rgba(124,58,237,0.08)',  ring: 'rgba(124,58,237,0.18)' },  // violet
+  { hex: '#9146ff', bg: 'rgba(145,70,255,0.08)',   ring: 'rgba(145,70,255,0.18)' },  // accent
   { hex: '#2563eb', bg: 'rgba(37,99,235,0.08)',    ring: 'rgba(37,99,235,0.18)' },   // blue
   { hex: '#d97706', bg: 'rgba(217,119,6,0.08)',    ring: 'rgba(217,119,6,0.18)' },   // amber
   { hex: '#059669', bg: 'rgba(5,150,105,0.08)',    ring: 'rgba(5,150,105,0.18)' },   // emerald
@@ -54,7 +54,7 @@ export function senderColor(name: string): string {
 // ── Named palette (for reference / one-off programmatic use) ─────────────────
 
 export const palette = {
-  violet:  '#7c3aed',
+  accent:  '#9146ff',
   blue:    '#2563eb',
   amber:   '#d97706',
   emerald: '#059669',

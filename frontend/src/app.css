@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
 
 @theme {
   --color-background: var(--background);
@@ -15,7 +15,6 @@
   --color-danger: var(--danger);
   --color-status-emerald: var(--status-emerald);
   --color-status-amber: var(--status-amber);
-  --color-status-violet: var(--status-violet);
 }
 
 :root {
@@ -28,14 +27,13 @@
   --text: #1c1a17;
   --text-muted: #6e6257;
   --text-faint: #a89e94;
-  --accent: #a05070;
-  --accent-hover: #843d5b;
+  --accent: #9146ff;
+  --accent-hover: #7a30e6;
   --danger: #dc2626;
 
   /* Status colours (from palette.ts) */
   --status-emerald: #059669;
   --status-amber: #d97706;
-  --status-violet: #7c3aed;
 
   /* Semantic status backgrounds (low-opacity tints) */
   --status-emerald-bg: rgba(5, 150, 105, 0.08);

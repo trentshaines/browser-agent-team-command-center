@@ -48,7 +48,7 @@
   <!-- Backdrop -->
   <div
     transition:fade={{ duration: 200 }}
-    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
     role="presentation"
     onclick={onClose}
   >
@@ -60,13 +60,13 @@
     >
       <!-- Glass halo — matches AgentExpandedModal -->
       <div
-        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
+        class="absolute -inset-2 rounded-[1.5rem] bg-white/30 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
         aria-hidden="true"
       ></div>
 
       <!-- Modal panel -->
       <div
-        class="relative rounded-2xl overflow-hidden bg-surface/85 backdrop-blur-2xl border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
+        class="relative rounded-2xl overflow-hidden bg-surface border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
         role="dialog"
         aria-modal="true"
         aria-label="Spawn new agent"

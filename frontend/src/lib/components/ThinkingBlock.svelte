@@ -20,7 +20,7 @@
       class="w-full flex items-center gap-2 px-3 py-1.5 text-left bg-surface hover:bg-surface-hover transition-colors"
     >
       {#if !done}
-        <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0"></span>
       {:else}
         <span class="w-1.5 h-1.5 rounded-full bg-border shrink-0"></span>
       {/if}

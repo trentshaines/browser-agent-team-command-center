@@ -79,11 +79,11 @@
       </div>
       <span class="text-[11px] font-semibold text-text-muted uppercase tracking-wide">Orchestrator</span>
       <!-- Status pill -->
-      <span class="ml-auto flex items-center gap-1.5 text-[10px] font-medium {streaming ? 'text-status-violet' : agentRuns.length > 0 && runningCount === 0 ? 'text-status-emerald' : 'text-text-faint'}">
+      <span class="ml-auto flex items-center gap-1.5 text-[10px] font-medium {streaming ? 'text-accent' : agentRuns.length > 0 && runningCount === 0 ? 'text-status-emerald' : 'text-text-faint'}">
         {#if streaming}
-          <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0"></span>
         {:else if runningCount > 0}
-          <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0"></span>
         {:else if agentRuns.length > 0}
           <span class="w-1.5 h-1.5 rounded-full bg-status-emerald shrink-0"></span>
         {/if}
@@ -109,7 +109,7 @@
     <!-- Summary bar -->
     <div class="shrink-0 px-4 py-2 border-b border-border-subtle/50 flex items-center gap-3">
       {#each [
-        { status: 'running',  label: 'Running', dot: 'bg-status-violet animate-pulse', text: 'text-status-violet', count: runningCount },
+        { status: 'running',  label: 'Running', dot: 'bg-accent animate-pulse', text: 'text-accent', count: runningCount },
         { status: 'complete', label: 'Done',    dot: 'bg-status-emerald',              text: 'text-status-emerald', count: doneCount },
         { status: 'error',    label: 'Failed',  dot: 'bg-danger',                 text: 'text-danger',    count: errorCount },
       ] as g}
@@ -129,13 +129,13 @@
     <div class="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-1.5">
       {#each agentRuns as run (run.id)}
         {@const host = hostOf(run)}
-        {@const latestAction = run.steps.at(-1)?.action_type}
+        {@const latestAction = run.steps.at(-1)?.action}
         <div class="rounded-xl border border-border-subtle bg-surface overflow-hidden">
           <div class="flex items-start gap-2.5 px-3 py-2.5">
             <!-- Status dot -->
             <div class="shrink-0 mt-1">
               {#if run.status === 'running'}
-                <span class="block w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse"></span>
+                <span class="block w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
               {:else if run.status === 'complete'}
                 <span class="block w-1.5 h-1.5 rounded-full bg-status-emerald"></span>
               {:else}
@@ -171,7 +171,7 @@
                 <!-- Indeterminate progress bar -->
                 <div class="flex items-center gap-2">
                   <div class="flex-1 h-1 rounded-full bg-surface-hover overflow-hidden">
-                    <div class="h-full w-1/3 rounded-full bg-status-violet origin-left animate-[progress-shimmer_1.8s_ease-in-out_infinite]"></div>
+                    <div class="h-full w-1/3 rounded-full bg-accent origin-left animate-[progress-shimmer_1.8s_ease-in-out_infinite]"></div>
                   </div>
                   <span class="text-[10px] text-text-faint shrink-0">
                     step {run.steps.length}
