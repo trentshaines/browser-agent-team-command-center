@@ -285,7 +285,7 @@
     });
   }
 
-  let activeTab = $state<'chat' | 'browser' | 'graph'>('chat');
+  let activeTab = $state<'chat' | 'graph'>('chat');
   const liveAgentCount = $derived(
     Object.values(agentFrames).filter(f => !f.done).length
   );
@@ -313,168 +313,103 @@
   });
 </script>
 
-<div class="flex flex-col h-full">
-  <!-- Tab bar -->
-  <div class="flex items-center gap-1 px-4 pt-2 pb-0 border-b border-border shrink-0" role="tablist" aria-label="Chat views">
-    <button
-      role="tab"
-      aria-selected={activeTab === 'chat'}
-      aria-controls="panel-chat"
-      onclick={() => activeTab = 'chat'}
-      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors
-        {activeTab === 'chat'
-          ? 'text-text border-b-2 border-accent -mb-px'
-          : 'text-text-faint hover:text-text'}"
-    >
-      Chat
-    </button>
-    <button
-      role="tab"
-      aria-selected={activeTab === 'browser'}
-      aria-controls="panel-browser"
-      onclick={() => activeTab = 'browser'}
-      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
-        {activeTab === 'browser'
-          ? 'text-text border-b-2 border-accent -mb-px'
-          : 'text-text-faint hover:text-text'}"
-    >
-      Browser
-      {#if liveAgentCount > 0}
-        <span class="flex items-center gap-1" aria-label="{liveAgentCount} agents live">
-          <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span>
-          <span class="text-[10px] text-violet-400">{liveAgentCount}</span>
-        </span>
-      {:else if Object.keys(agentFrames).length > 0}
-        <span class="text-[10px] text-text-faint">{Object.keys(agentFrames).length}</span>
-      {/if}
-    </button>
-    <button
-      role="tab"
-      aria-selected={activeTab === 'graph'}
-      aria-controls="panel-graph"
-      onclick={() => activeTab = 'graph'}
-      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
-        {activeTab === 'graph'
-          ? 'text-text border-b-2 border-accent -mb-px'
-          : 'text-text-faint hover:text-text'}"
-    >
-      Graph
-      {#if agentRuns.length > 0}
-        {@const totalSteps = agentRuns.reduce((s, r) => s + r.steps.length, 0)}
-        {#if totalSteps > 0}
-          <span class="text-[10px] text-text-faint">{totalSteps}</span>
+<div class="flex h-full overflow-hidden">
+
+  <!-- Left: Chat panel (fixed width, always visible) -->
+  <div class="w-[400px] shrink-0 flex flex-col border-r border-border bg-background overflow-hidden">
+
+    <!-- Tab bar: Chat | Graph -->
+    <div class="flex items-center gap-1 px-4 pt-2 pb-0 border-b border-border shrink-0" role="tablist" aria-label="Chat views">
+      <button
+        role="tab"
+        aria-selected={activeTab === 'chat'}
+        onclick={() => activeTab = 'chat'}
+        class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors
+          {activeTab === 'chat' ? 'text-text border-b-2 border-accent -mb-px' : 'text-text-faint hover:text-text'}"
+      >Chat</button>
+      <button
+        role="tab"
+        aria-selected={activeTab === 'graph'}
+        onclick={() => activeTab = 'graph'}
+        class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
+          {activeTab === 'graph' ? 'text-text border-b-2 border-accent -mb-px' : 'text-text-faint hover:text-text'}"
+      >
+        Graph
+        {#if agentRuns.length > 0}
+          {@const totalSteps = agentRuns.reduce((s, r) => s + r.steps.length, 0)}
+          {#if totalSteps > 0}<span class="text-[10px] text-text-faint">{totalSteps}</span>{/if}
         {/if}
-      {/if}
-    </button>
+      </button>
+    </div>
+
+    {#if activeTab === 'chat'}
+      <!-- Messages -->
+      <div bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
+        <div class="max-w-xl mx-auto">
+          {#if loading}
+            <div class="flex justify-center py-12" role="status" aria-label="Loading messages">
+              <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+            </div>
+          {:else if error}
+            <div class="text-center py-12">
+              <p class="text-danger text-sm">{error}</p>
+            </div>
+          {:else if messageList.length === 0}
+            <div class="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <p class="text-text-faint text-sm">Send a message to start the conversation</p>
+            </div>
+          {:else}
+            {#each messageList as message (message.id)}
+              <MessageBubble
+                {message}
+                thinking={thinkingMap.get(message.id) ?? ''}
+                thinkingDone={thinkingDoneSet.has(message.id)}
+              />
+            {/each}
+            <AgentRunPanel runs={agentRuns} />
+          {/if}
+        </div>
+      </div>
+      <!-- Input -->
+      <ChatInput
+        onsubmit={sendMessage}
+        disabled={loading}
+        {streaming}
+        onstop={() => {
+          const last = messageList[messageList.length - 1];
+          if (last?.role === 'assistant') cancelledMessageId = last.id;
+          streaming = false;
+          const id = sessionId;
+          closeSSE();
+          connectSSE(id);
+        }}
+      />
+    {:else}
+      <div class="flex-1 overflow-hidden p-3">
+        <AgentGraph runs={agentRuns} />
+      </div>
+    {/if}
 
   </div>
 
-  <!-- Chat tab -->
-  {#if activeTab === 'chat'}
-    <div id="panel-chat" role="tabpanel" bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
-      <div class="max-w-3xl mx-auto">
-        {#if loading}
-          <div class="flex justify-center py-12" role="status" aria-label="Loading messages">
-            <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
-          </div>
-        {:else if error}
-          <div class="text-center py-12">
-            <p class="text-danger text-sm">{error}</p>
-          </div>
-        {:else if messageList.length === 0}
-          <div class="flex flex-col items-center justify-center py-16 text-center gap-3">
-            <p class="text-text-faint text-sm">Send a message to start the conversation</p>
-          </div>
-        {:else}
-          {#each messageList as message (message.id)}
-            <MessageBubble
-              {message}
-              thinking={thinkingMap.get(message.id) ?? ''}
-              thinkingDone={thinkingDoneSet.has(message.id)}
-            />
-          {/each}
-          <AgentRunPanel runs={agentRuns} />
-        {/if}
+  <!-- Right: Agent tiles canvas (always visible background) -->
+  <div class="flex-1 relative overflow-hidden bg-background">
+    {#if Object.keys(agentFrames).length > 0}
+      <AgentTiles frames={agentFrames} fullscreen messages={messageList} />
+    {:else if agentRuns.some(r => r.status === 'running')}
+      <!-- Agents spawned but no screenshots yet -->
+      <div class="flex items-center justify-center h-full gap-3">
+        <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-sm text-text-muted">
+          {agentRuns.filter(r => r.status === 'running').length} agent{agentRuns.filter(r => r.status === 'running').length !== 1 ? 's' : ''} starting…
+        </span>
       </div>
-    </div>
+    {:else}
+      <!-- Empty state -->
+      <div class="flex items-center justify-center h-full">
+        <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>
+      </div>
+    {/if}
+  </div>
 
-
-    <ChatInput
-      onsubmit={sendMessage}
-      disabled={loading}
-      {streaming}
-      onstop={() => {
-        // Record which message is being cancelled so its events are ignored
-        const last = messageList[messageList.length - 1];
-        if (last?.role === 'assistant') cancelledMessageId = last.id;
-        streaming = false;
-        // Close and immediately reconnect SSE so future messages still stream
-        const id = sessionId;
-        closeSSE();
-        connectSSE(id);
-      }}
-    />
-
-  <!-- Graph tab -->
-  {:else if activeTab === 'graph'}
-    <div id="panel-graph" role="tabpanel" class="flex-1 overflow-hidden p-3">
-      <AgentGraph runs={agentRuns} />
-    </div>
-
-  <!-- Browser tab -->
-  {:else}
-    <div id="panel-browser" role="tabpanel" class="flex-1 overflow-y-auto p-4">
-      {#if Object.keys(agentFrames).length > 0}
-        <!-- Live screenshot tiles -->
-        <AgentTiles frames={agentFrames} fullscreen messages={messageList} />
-      {:else if agentRuns.length > 0}
-        <!-- Agents are running but no screenshots yet (Chromium starting up, or cloud mode) -->
-        {@const cols = agentRuns.length <= 1 ? 1 : agentRuns.length <= 4 ? 2 : 3}
-        <div class="grid gap-3 h-full" style="grid-template-columns: repeat({cols}, minmax(0, 1fr)); align-content: start">
-          {#each agentRuns as run (run.id)}
-            <div class="rounded-xl border border-border overflow-hidden bg-background flex flex-col">
-              <!-- Placeholder viewport -->
-              <div class="relative bg-[#1a1a1a] aspect-video flex items-center justify-center">
-                {#if run.status === 'running'}
-                  <div class="flex flex-col items-center gap-2">
-                    <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-                    <span class="text-[10px] text-text-faint font-mono">waiting for screenshot…</span>
-                  </div>
-                {:else if run.status === 'error'}
-                  <span class="text-[11px] text-danger font-mono">agent error</span>
-                {:else}
-                  <span class="text-[11px] text-text-faint font-mono">complete</span>
-                {/if}
-                <!-- Status badge -->
-                <div class="absolute top-2 right-2">
-                  {#if run.status === 'running'}
-                    <span class="text-[9px] bg-violet-500/90 text-white px-1.5 py-0.5 rounded-full font-medium animate-pulse">live</span>
-                  {:else if run.status === 'error'}
-                    <span class="text-[9px] bg-red-500/90 text-white px-1.5 py-0.5 rounded-full font-medium">error</span>
-                  {:else}
-                    <span class="text-[9px] bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-full font-medium">done</span>
-                  {/if}
-                </div>
-              </div>
-              <!-- Task label -->
-              <div class="px-3 py-2 bg-surface">
-                <span class="text-[11px] text-text-muted line-clamp-2">{run.task}</span>
-              </div>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <!-- Truly idle — no agents at all -->
-        <div class="flex flex-col items-center justify-center h-full text-center gap-3">
-          <p class="text-text-faint text-sm">No browser agents active</p>
-          <button
-            onclick={() => activeTab = 'chat'}
-            class="text-xs text-accent hover:underline"
-          >
-            ← Go to Chat and send a task that requires web browsing
-          </button>
-        </div>
-      {/if}
-    </div>
-  {/if}
 </div>
