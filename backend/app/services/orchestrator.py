@@ -11,11 +11,23 @@ from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
+# Per-session lock: prevents two orchestrator turns from running concurrently.
+# Without this, two Claude CLI subprocesses fight over .claude/ session state
+# and one crashes, killing its browser-agent children.
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 from app.database import AsyncSessionLocal
 from app.models.message import Message
 from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.agent_run_log import AgentRunLog
-from app.services import sse
+from app.services import sse, agent_registry
 from app.config import get_settings
 
 SYSTEM_PROMPT = """You are a friendly, concise assistant helping non-technical users get things done on the web. You control browsers that do the actual work.
@@ -53,7 +65,9 @@ async def run_turn(
     """
     settings = get_settings()
     session_id_str = str(session_id)
-    await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
+    lock = _get_session_lock(session_id_str)
+    async with lock:
+        await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
 
 
 async def _run_with_sdk(
@@ -179,6 +193,13 @@ Return the JSON result from the script exactly as-is."""
                                     db.add(agent_run)
                                     await db.flush()
                                     pending_agent_runs[tool_id] = agent_run.id
+                                    agent_registry.push(session_id_str, str(agent_run.id))
+                                    await sse.publish(session_id_str, "agent_event", {
+                                        "type": "agent_spawned",
+                                        "agent_id": str(agent_run.id),
+                                        "task": prompt,
+                                        "name": browser_name,
+                                    })
                                     logger.info("Agent spawned: run=%s name=%s task=%s", agent_run.id, browser_name, prompt[:60])
                                 except Exception:
                                     logger.warning("Failed to create AgentRun for Task", exc_info=True)

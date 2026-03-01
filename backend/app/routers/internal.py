@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
-from app.services import sse
+from app.services import sse, agent_registry
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,19 @@ async def verify_internal_token(x_internal_token: Annotated[str, Header()] = "")
     settings = get_settings()
     if settings.internal_api_token and x_internal_token != settings.internal_api_token:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+class AgentClaimRequest(BaseModel):
+    session_id: str = Field(..., max_length=36)
+
+
+@router.post("/agent-claim")
+async def agent_claim(
+    data: AgentClaimRequest,
+    _: Annotated[None, Depends(verify_internal_token)],
+) -> dict:
+    agent_run_id = await agent_registry.claim(data.session_id)
+    return {"agent_run_id": agent_run_id}
 
 
 @router.post("/agent-frame")

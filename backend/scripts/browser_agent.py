@@ -79,6 +79,25 @@ async def _post_internal(path: str, payload: dict) -> None:
         print(f"[internal] POST {path} failed: {e}", file=sys.stderr, flush=True)
 
 
+async def _claim_agent_run(session_id: str) -> str | None:
+    """Claim the orchestrator-registered agent_run_id for this session."""
+    port = os.environ.get("PORT", "8000")
+    backend_url = os.environ.get("BACKEND_URL", f"http://localhost:{port}")
+    token = os.environ.get("INTERNAL_API_TOKEN", "")
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(
+                f"{backend_url}/internal/agent-claim",
+                headers={"X-Internal-Token": token},
+                json={"session_id": session_id},
+            )
+            if resp.status_code == 200:
+                return resp.json().get("agent_run_id")
+    except Exception:
+        pass
+    return None
+
+
 async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
     await _post_internal("/internal/agent-frame", {
         "session_id": session_id, "agent_id": agent_id,
@@ -104,7 +123,13 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
     """Run a browser-use agent with the given task, emitting step logs as JSONL."""
     from browser_use import Agent, BrowserProfile
 
-    agent_id = str(uuid.uuid4())
+    # Try to claim the orchestrator's pre-registered agent_run_id so frames/logs
+    # share the same UUID as the card already shown in the UI. Fall back to a
+    # fresh UUID if the claim times out (e.g. no session_id or registry miss).
+    if session_id:
+        agent_id = (await _claim_agent_run(session_id)) or str(uuid.uuid4())
+    else:
+        agent_id = str(uuid.uuid4())
 
     try:
         llm = create_llm(model)
