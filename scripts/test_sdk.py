@@ -57,10 +57,13 @@ async def main():
                 },
             ),
         ):
-            if hasattr(event, "text") and event.text:
-                print(event.text, end="", flush=True)
-            elif hasattr(event, "thinking") and event.thinking:
-                print(f"\n[thinking]: {event.thinking[:100]}...\n", flush=True)
+            t = type(event).__name__
+            if t == "AssistantMessage":
+                print(f"\n[AssistantMessage] content={repr(event.content)[:300]}", flush=True)
+            elif t == "ResultMessage":
+                print(f"\n[Result] result={repr(event.result)[:300]} cost=${event.total_cost_usd:.4f}", flush=True)
+            elif t == "SystemMessage":
+                print(f"\n[System] subtype={event.subtype}", flush=True)
     finally:
         if old is not None:
             os.environ["CLAUDECODE"] = old

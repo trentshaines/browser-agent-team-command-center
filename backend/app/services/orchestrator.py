@@ -211,11 +211,18 @@ Return the JSON result from the script exactly as-is."""
                     },
                 ),
             ):
-                if hasattr(event, "text") and event.text:
-                    await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
-                    full_response += event.text
-                elif hasattr(event, "thinking") and event.thinking:
-                    await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
+                # AssistantMessage has a content list of TextBlock / ThinkingBlock / ToolUseBlock
+                if hasattr(event, "content") and isinstance(event.content, list):
+                    for block in event.content:
+                        block_type = type(block).__name__
+                        if block_type == "TextBlock" and getattr(block, "text", None):
+                            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": block.text})
+                            full_response += block.text
+                        elif block_type == "ThinkingBlock" and getattr(block, "thinking", None):
+                            await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": block.thinking})
+                # ResultMessage has the final synthesized result
+                elif hasattr(event, "result") and event.result and not full_response:
+                    full_response = event.result
 
         await _save_and_complete(session_id_str, message_id, full_response, db)
     except TimeoutError:
