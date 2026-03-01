@@ -15,23 +15,23 @@
 }
 
 :root {
-  color-scheme: dark;
-  /* Background */
-  --background: #0d0d0d;
-  --surface: #141414;
-  --surface-hover: #1a1a1a;
+  color-scheme: light;
+  /* Background — warm off-white like Claude */
+  --background: #f5f4f0;
+  --surface: #eeece7;
+  --surface-hover: #e5e2db;
   /* Borders */
-  --border: #2a2a2a;
-  --border-subtle: #222;
+  --border: #d4cfc7;
+  --border-subtle: #dedad3;
   /* Text */
-  --text: #e8e8e8;
-  --text-muted: #888;
-  --text-faint: #555;
-  /* Accent (purple) */
-  --accent: #7c6ff7;
-  --accent-hover: #9489f9;
+  --text: #1a1916;
+  --text-muted: #6b6760;
+  --text-faint: #a09c97;
+  /* Accent — Claude orange */
+  --accent: #c77b35;
+  --accent-hover: #b06a28;
   /* Danger */
-  --danger: #ef4444;
+  --danger: #dc2626;
 }
 
 * {
@@ -59,7 +59,7 @@ body {
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: var(--text-muted);
 }
 
 /* Prose / markdown styles */
@@ -79,7 +79,7 @@ body {
   margin: 0.75em 0;
 }
 .prose code {
-  background: #1e1e1e;
+  background: var(--surface-hover);
   border-radius: 4px;
   padding: 0.15em 0.4em;
   font-size: 0.875em;
