@@ -70,6 +70,16 @@ async def _run_with_sdk(
     _old_claudecode = os.environ.pop("CLAUDECODE", None)
     logger.info("_run_with_sdk: CLAUDECODE was %s", "set" if _old_claudecode else "unset")
 
+    # Ensure Bedrock env vars are set for the SDK subprocess when configured
+    if settings.llm_provider == "bedrock":
+        os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
+        os.environ["AWS_REGION"] = settings.aws_region
+        os.environ.setdefault("ANTHROPIC_MODEL", settings.anthropic_model)
+        os.environ.setdefault("ANTHROPIC_SMALL_FAST_MODEL", settings.anthropic_small_fast_model)
+        if settings.aws_bearer_token_bedrock:
+            os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", settings.aws_bearer_token_bedrock)
+        logger.info("_run_with_sdk: Bedrock enabled, region=%s, model=%s", settings.aws_region, settings.anthropic_model)
+
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
 Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}

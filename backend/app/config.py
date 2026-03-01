@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     aws_bearer_token_bedrock: str = ""
     llm_provider: str = ""  # set to "bedrock" to force Bedrock for the orchestrator
+    anthropic_model: str = "us.anthropic.claude-sonnet-4-6"  # Bedrock model ID for primary model
+    anthropic_small_fast_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"  # Bedrock model ID for small/fast model
 
     # Internal API
     internal_api_token: str = ""  # Set to a strong random secret in production
