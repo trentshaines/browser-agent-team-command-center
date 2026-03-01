@@ -14,8 +14,11 @@ COPY . .
 
 # Install Python deps (includes browser-use, playwright via pyproject.toml)
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
+# Pass --build-arg INSTALL_BROWSERS=true to install Chromium for local browser mode.
+# Omit (default) when using BROWSER_USE_CLOUD=1 to keep the image ~500MB lighter.
+ARG INSTALL_BROWSERS=false
 RUN uv pip install --system --no-cache . \
-    && playwright install chromium --with-deps
+    && if [ "$INSTALL_BROWSERS" = "true" ]; then playwright install chromium --with-deps; fi
 
 RUN chmod +x start.sh
 

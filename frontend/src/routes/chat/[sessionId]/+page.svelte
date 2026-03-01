@@ -233,7 +233,15 @@
   }
 
   async function sendMessage(content: string) {
-    if (streaming) return;
+    if (streaming) {
+      // Escape current stream without killing subprocesses, then reprompt
+      const last = messageList[messageList.length - 1];
+      if (last?.role === 'assistant') cancelledMessageId = last.id;
+      streaming = false;
+      const id = sessionId;
+      closeSSE();
+      await connectSSE(id);
+    }
     streaming = true;
     error = null;
     agentRuns = [];
