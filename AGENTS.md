@@ -20,6 +20,8 @@ User
 - **Async throughout** — SQLAlchemy async + asyncpg driver + FastAPI async endpoints
 - **Cookie-based auth** — JWT in httpOnly cookies, not localStorage (CSRF-safe)
 - **Alembic migrations** — run on startup before uvicorn (`alembic upgrade head && uvicorn ...`)
+- **Orchestrator strategy** — tries `claude_agent_sdk` first, falls back to direct Anthropic API if SDK import fails (requires `ANTHROPIC_API_KEY` for fallback path)
+- **Rate limiting** — slowapi middleware applied globally; auth routes have per-IP limits
 
 ---
 
@@ -57,7 +59,8 @@ railway open
 **Important:** `railway.toml` is only read when deployed via GitHub integration. For local `railway up`, the Dockerfile and Procfile are used.
 
 **Builder:** Dockerfile (`backend/Dockerfile`)
-**Start command:** `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+**Start command (Procfile/railway.toml):** `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+**Dockerfile CMD:** `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}` (no alembic — migrations are handled by Procfile/railway.toml, not the Dockerfile CMD directly)
 **Health check:** `GET /health` → `{"status": "ok"}`
 
 **Required env vars (set via `railway variables set`):**
@@ -68,6 +71,8 @@ GOOGLE_CLIENT_ID     # from Google Cloud Console → APIs & Services → Credent
 GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI  # https://<vercel-frontend-url>/auth/callback/google
 OPENROUTER_API_KEY   # from openrouter.ai/keys
+ANTHROPIC_API_KEY    # optional; required if orchestrator falls back from Claude Agent SDK to direct Anthropic API
+MINIMAX_API_KEY      # optional; only needed if using MiniMax models (MiniMax-M2.5, MiniMax-M2.1)
 ENVIRONMENT          # production
 COOKIE_SECURE        # true (in production)
 COOKIE_SAMESITE      # none (cross-origin frontend/backend)
@@ -145,8 +150,9 @@ alembic history
 ```
 backend/
 ├── app/
-│   ├── main.py          # FastAPI app, CORS, router registration
+│   ├── main.py          # FastAPI app, CORS, rate limiting, router registration
 │   ├── config.py        # Pydantic settings (reads from env)
+│   ├── limiter.py       # slowapi rate limiter instance
 │   ├── database.py      # SQLAlchemy async engine + session
 │   ├── models/          # SQLAlchemy ORM models
 │   │   ├── user.py
@@ -276,9 +282,7 @@ git push origin master
 
 | Issue | Fix |
 |-------|-----|
-| `railway.toml` ignored on `railway up` | Only read via GitHub integration; use Dockerfile/Procfile for local deploys |
-| `asyncpg` won't connect to Neon | Use `postgresql+asyncpg://` not `postgresql://`; use `ssl=require` not `sslmode=require` |
-| CORS errors in browser | Check `FRONTEND_URL` env var matches exact Vercel URL (no trailing slash) |
+| `asyncpg` won't connect to Neon | Use `postgresql+asyncpg://` not `postgresql://`; use `ssl=require` not `sslmode=require`; remove `channel_binding=require` |
+| CORS errors in browser | `FRONTEND_URL` must match exact Vercel URL — no trailing slash |
 | Auth cookie not sent cross-origin | Need `COOKIE_SAMESITE=none` + `COOKIE_SECURE=true` in production |
-| SSE connection drops | Don't deploy backend to Vercel Functions — use Railway (persistent process) |
 | Alembic can't find models | Run from `backend/` directory, not repo root |

@@ -4,8 +4,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.limiter import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -25,7 +24,6 @@ from app.services.auth import (
 )
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
