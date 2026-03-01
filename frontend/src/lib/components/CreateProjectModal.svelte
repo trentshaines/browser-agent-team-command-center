@@ -131,7 +131,7 @@
 
       <!-- Modal panel -->
       <div
-        class="relative rounded-2xl overflow-hidden bg-surface/95 backdrop-blur-2xl border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
+        class="relative rounded-2xl overflow-hidden bg-surface/85 backdrop-blur-2xl border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
         role="dialog"
         aria-modal="true"
         aria-label="Create new project"
@@ -144,7 +144,7 @@
             {#if busy}
               <div
                 class="w-5 h-5 rounded-full animate-spin [animation-duration:1.2s]"
-                style="background: conic-gradient(from 0deg, transparent 0%, #6366f1 70%, transparent 100%)"
+                style="background: conic-gradient(from 0deg, transparent 0%, var(--accent) 70%, transparent 100%)"
               ></div>
             {:else if step === 'review'}
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-accent">
@@ -200,7 +200,7 @@
             </div>
 
             {#if planError}
-              <p class="text-xs text-red-400">{planError}</p>
+              <p class="text-xs text-danger">{planError}</p>
             {/if}
 
             <div class="flex items-center justify-end gap-2 pt-1">
@@ -292,7 +292,7 @@
                           type="button"
                           onclick={() => removeAgent(idx)}
                           disabled={launching}
-                          class="p-1 rounded text-text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-0"
+                          class="p-1 rounded text-text-faint hover:text-danger opacity-0 group-hover:opacity-100 transition-all disabled:opacity-0"
                           aria-label="Remove agent"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

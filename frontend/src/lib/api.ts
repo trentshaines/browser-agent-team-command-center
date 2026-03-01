@@ -67,7 +67,6 @@ export interface AgentSpec {
 
 export interface TaskResponse {
   task_id: string;
-  agents: { agent_id: string; task: string }[];
 }
 
 export const tasks = {

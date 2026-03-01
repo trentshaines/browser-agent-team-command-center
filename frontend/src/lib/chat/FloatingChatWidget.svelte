@@ -139,7 +139,7 @@
 
   <!-- Widget -->
   <div
-    class="relative flex flex-col rounded-xl bg-white/95 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+    class="relative flex flex-col rounded-xl bg-surface/85 backdrop-blur-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
     style="width: {widgetW}px; height: {widgetH}px"
   >
     <!-- Invisible top-edge resize handle -->

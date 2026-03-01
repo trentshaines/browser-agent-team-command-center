@@ -13,6 +13,9 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-danger: var(--danger);
+  --color-status-emerald: var(--status-emerald);
+  --color-status-amber: var(--status-amber);
+  --color-status-violet: var(--status-violet);
 }
 
 :root {
@@ -28,6 +31,17 @@
   --accent: #a05070;
   --accent-hover: #843d5b;
   --danger: #dc2626;
+
+  /* Status colours (from palette.ts) */
+  --status-emerald: #059669;
+  --status-amber: #d97706;
+  --status-violet: #7c3aed;
+
+  /* Semantic status backgrounds (low-opacity tints) */
+  --status-emerald-bg: rgba(5, 150, 105, 0.08);
+  --status-emerald-border: rgba(5, 150, 105, 0.18);
+  --status-danger-bg: rgba(220, 38, 38, 0.08);
+  --status-danger-border: rgba(220, 38, 38, 0.18);
 }
 
 * {

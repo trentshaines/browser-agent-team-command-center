@@ -63,7 +63,6 @@ class CreateTaskRequest(BaseModel):
 
 class CreateTaskResponse(BaseModel):
     task_id: str
-    agents: list[dict[str, str]]
 
 
 class RepromptRequest(BaseModel):
@@ -186,19 +185,17 @@ async def create_task(req: CreateTaskRequest):
         agent_specs = [(a.name, a.task) for a in req.agents]
     else:
         subtasks = task_refiner(req.prompt)
-        agent_specs = [(f"agent-{i}", t) for i, t in enumerate(subtasks)]
+        agent_specs = [(f"Agent {i+1}", t) for i, t in enumerate(subtasks)]
 
-    # Add agents to orchestrator
-    agent_info = []
+    # Add agents to orchestrator (real agent IDs come via SSE agent_spawned events)
     for name, task_prompt in agent_specs:
-        agent = orch.add_prompt(task_prompt)
+        agent = orch.add_prompt(task_prompt, name=name)
         state.agents.append(agent)
-        agent_info.append({"agent_id": name, "task": task_prompt})
 
     # Launch orchestrator in background
     asyncio.create_task(_run_task(task_id, state))
 
-    return CreateTaskResponse(task_id=task_id, agents=agent_info)
+    return CreateTaskResponse(task_id=task_id)
 
 
 @app.get("/task/{task_id}/stream")
@@ -239,8 +236,57 @@ async def stream_task(task_id: str):
 # Session-compatible endpoints (the frontend connects to /sessions/{id}/stream)
 # ---------------------------------------------------------------------------
 
-# Maps session IDs → task IDs so the frontend can use its own session routing.
+# Session-level subscriber queues — allows SSE to connect before any task is created.
+session_queues: dict[str, list[asyncio.Queue]] = {}
 session_to_task: dict[str, str] = {}
+
+
+def _make_session_callback(session_id: str):
+    """Like _make_event_callback but pushes to session-level queues."""
+    async def on_event(event_type: str, data: dict[str, Any]) -> None:
+        queues = session_queues.get(session_id, [])
+        task_id = session_to_task.get(session_id)
+        state = tasks.get(task_id) if task_id else None
+
+        if event_type == "agent_spawned":
+            event = {"event": "agent_event", "type": "agent_spawned", **data}
+        elif event_type == "agent_status":
+            agent_id = data.get("agent_id")
+            total_steps = 0
+            if state:
+                for agent in state.agents:
+                    if agent.task_id == agent_id:
+                        total_steps = len(agent.steps)
+                        break
+            event = {
+                "event": "agent_event",
+                "type": "agent_complete",
+                "agent_run_id": agent_id,
+                "result": data.get("result"),
+                "total_steps": total_steps,
+            }
+        elif event_type == "agent_step":
+            event = {
+                "event": "agent_log",
+                "agent_run_id": data.get("agent_id"),
+                **{k: v for k, v in data.items() if k != "agent_id"},
+            }
+        elif event_type == "agent_frame":
+            event = {"event": "agent_frame", **data}
+        elif event_type == "done":
+            event = {"event": "done", **data}
+        else:
+            event = {"event": event_type, **data}
+
+        for q in queues:
+            await q.put(event)
+
+        if event_type == "done":
+            if state:
+                state.done = True
+            for q in queues:
+                await q.put(None)
+    return on_event
 
 
 @app.post("/sessions/{session_id}/task")
@@ -248,45 +294,44 @@ async def create_session_task(session_id: str, req: CreateTaskRequest):
     """Create a task and associate it with a frontend session ID."""
     task_id = str(uuid.uuid4())
 
-    callback = _make_event_callback(task_id)
+    callback = _make_session_callback(session_id)
     orch = Orchestrator(on_event=callback)
 
     state = TaskState(orchestrator=orch)
     tasks[task_id] = state
     session_to_task[session_id] = task_id
 
+    # Ensure session queue list exists
+    if session_id not in session_queues:
+        session_queues[session_id] = []
+
     # Determine agent specs
     if req.agents:
         agent_specs = [(a.name, a.task) for a in req.agents]
     else:
         subtasks = task_refiner(req.prompt)
-        agent_specs = [(f"agent-{i}", t) for i, t in enumerate(subtasks)]
+        agent_specs = [(f"Agent {i+1}", t) for i, t in enumerate(subtasks)]
 
-    # Add agents to orchestrator
-    agent_info = []
+    # Add agents to orchestrator (real agent IDs come via SSE agent_spawned events)
     for name, task_prompt in agent_specs:
-        agent = orch.add_prompt(task_prompt)
+        agent = orch.add_prompt(task_prompt, name=name)
         state.agents.append(agent)
-        agent_info.append({"agent_id": name, "task": task_prompt})
 
     # Launch orchestrator in background
     asyncio.create_task(_run_task(task_id, state))
 
-    return CreateTaskResponse(task_id=task_id, agents=agent_info)
+    return CreateTaskResponse(task_id=task_id)
 
 
 @app.get("/sessions/{session_id}/stream")
 async def stream_session(session_id: str):
-    """SSE stream using the frontend's session ID."""
-    task_id = session_to_task.get(session_id)
-    if not task_id:
-        raise HTTPException(status_code=404, detail="No task for this session")
-    state = tasks.get(task_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Task not found")
+    """SSE stream using the frontend's session ID. Can connect before any task is created."""
+    # Ensure session queue list exists (may be called before POST /sessions/{id}/task)
+    if session_id not in session_queues:
+        session_queues[session_id] = []
 
     q: asyncio.Queue = asyncio.Queue()
-    state.queues.append(q)
+    session_queues[session_id].append(q)
 
     async def event_generator():
         try:
@@ -297,8 +342,9 @@ async def stream_session(session_id: str):
                 event_type = event.pop("event", "message")
                 yield f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
         finally:
-            if q in state.queues:
-                state.queues.remove(q)
+            queues = session_queues.get(session_id, [])
+            if q in queues:
+                queues.remove(q)
 
     return StreamingResponse(
         event_generator(),

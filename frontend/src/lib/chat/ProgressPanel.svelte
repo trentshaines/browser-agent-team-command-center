@@ -79,13 +79,13 @@
       </div>
       <span class="text-[11px] font-semibold text-text-muted uppercase tracking-wide">Orchestrator</span>
       <!-- Status pill -->
-      <span class="ml-auto flex items-center gap-1.5 text-[10px] font-medium {streaming ? 'text-violet-500' : agentRuns.length > 0 && runningCount === 0 ? 'text-emerald-600' : 'text-text-faint'}">
+      <span class="ml-auto flex items-center gap-1.5 text-[10px] font-medium {streaming ? 'text-status-violet' : agentRuns.length > 0 && runningCount === 0 ? 'text-status-emerald' : 'text-text-faint'}">
         {#if streaming}
-          <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
         {:else if runningCount > 0}
-          <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
         {:else if agentRuns.length > 0}
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <span class="w-1.5 h-1.5 rounded-full bg-status-emerald shrink-0"></span>
         {/if}
         {orchestratorStatus()}
       </span>
@@ -109,9 +109,9 @@
     <!-- Summary bar -->
     <div class="shrink-0 px-4 py-2 border-b border-border-subtle/50 flex items-center gap-3">
       {#each [
-        { status: 'running',  label: 'Running', dot: 'bg-violet-400 animate-pulse', text: 'text-violet-600', count: runningCount },
-        { status: 'complete', label: 'Done',    dot: 'bg-emerald-500',              text: 'text-emerald-600', count: doneCount },
-        { status: 'error',    label: 'Failed',  dot: 'bg-red-400',                 text: 'text-red-500',    count: errorCount },
+        { status: 'running',  label: 'Running', dot: 'bg-status-violet animate-pulse', text: 'text-status-violet', count: runningCount },
+        { status: 'complete', label: 'Done',    dot: 'bg-status-emerald',              text: 'text-status-emerald', count: doneCount },
+        { status: 'error',    label: 'Failed',  dot: 'bg-danger',                 text: 'text-danger',    count: errorCount },
       ] as g}
         {#if g.count > 0}
           <div class="flex items-center gap-1.5">
@@ -135,11 +135,11 @@
             <!-- Status dot -->
             <div class="shrink-0 mt-1">
               {#if run.status === 'running'}
-                <span class="block w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span>
+                <span class="block w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse"></span>
               {:else if run.status === 'complete'}
-                <span class="block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span class="block w-1.5 h-1.5 rounded-full bg-status-emerald"></span>
               {:else}
-                <span class="block w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                <span class="block w-1.5 h-1.5 rounded-full bg-danger"></span>
               {/if}
             </div>
 
@@ -171,7 +171,7 @@
                 <!-- Indeterminate progress bar -->
                 <div class="flex items-center gap-2">
                   <div class="flex-1 h-1 rounded-full bg-surface-hover overflow-hidden">
-                    <div class="h-full w-1/3 rounded-full bg-violet-400 origin-left animate-[progress-shimmer_1.8s_ease-in-out_infinite]"></div>
+                    <div class="h-full w-1/3 rounded-full bg-status-violet origin-left animate-[progress-shimmer_1.8s_ease-in-out_infinite]"></div>
                   </div>
                   <span class="text-[10px] text-text-faint shrink-0">
                     step {run.steps.length}
@@ -180,18 +180,18 @@
               {:else if run.status === 'complete'}
                 <div class="text-[10px] text-text-faint">{run.steps.length} steps · done</div>
               {:else}
-                <div class="text-[10px] text-red-400">{run.steps.length} steps · failed</div>
+                <div class="text-[10px] text-danger">{run.steps.length} steps · failed</div>
               {/if}
             </div>
           </div>
 
           <!-- Result / error footer -->
           {#if run.result}
-            <div class="px-3 py-1.5 bg-emerald-50 border-t border-emerald-100 text-[10px] text-emerald-700 leading-snug">
-              <span class="mr-1 text-emerald-500">↳</span>{run.result}
+            <div class="px-3 py-1.5 bg-[var(--status-emerald-bg)] border-t border-[var(--status-emerald-border)] text-[10px] text-status-emerald leading-snug">
+              <span class="mr-1 text-status-emerald">↳</span>{run.result}
             </div>
           {:else if run.steps.at(-1)?.error}
-            <div class="px-3 py-1.5 bg-red-50 border-t border-red-100 text-[10px] text-red-600 leading-snug">
+            <div class="px-3 py-1.5 bg-[var(--status-danger-bg)] border-t border-[var(--status-danger-border)] text-[10px] text-danger leading-snug">
               <span class="mr-1">⚠</span>{run.steps.at(-1)?.error}
             </div>
           {/if}

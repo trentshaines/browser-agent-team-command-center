@@ -60,13 +60,13 @@
     >
       <!-- Glass halo — matches AgentExpandedModal -->
       <div
-        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 dark:bg-white/5 border border-white/50 dark:border-white/20 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
+        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]"
         aria-hidden="true"
       ></div>
 
       <!-- Modal panel -->
       <div
-        class="relative rounded-2xl overflow-hidden bg-surface/95 backdrop-blur-2xl border border-white/25 dark:border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
+        class="relative rounded-2xl overflow-hidden bg-surface/85 backdrop-blur-2xl border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
         role="dialog"
         aria-modal="true"
         aria-label="Spawn new agent"
@@ -93,7 +93,7 @@
           <button
             type="button"
             onclick={onClose}
-            class="p-1.5 rounded-lg text-text-faint hover:text-text hover:bg-white/30 dark:hover:bg-white/10 transition-all"
+            class="p-1.5 rounded-lg text-text-faint hover:text-text hover:bg-white/30 transition-all"
             aria-label="Close"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -142,7 +142,7 @@
             <button
               type="button"
               onclick={onClose}
-              class="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text hover:bg-white/30 dark:hover:bg-white/10 transition-all"
+              class="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text hover:bg-white/30 transition-all"
             >
               Cancel
             </button>

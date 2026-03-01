@@ -256,10 +256,11 @@ def _build_recovery_prompt(goal: str, steps: list[TaskStepView], error: str) -> 
 class BrowserAgent:
 	"""Wraps a single browser-use cloud task."""
 
-	def __init__(self, client: AsyncBrowserUse, prompt: str, on_event: EventCallback | None = None):
+	def __init__(self, client: AsyncBrowserUse, prompt: str, on_event: EventCallback | None = None, name: str | None = None):
 		self.client = client
 		self.prompt = prompt
 		self.on_event = on_event
+		self.name = name
 		self.state = AgentState.PENDING
 		self.task_id: str | None = None
 		self.session_id: str | None = None
@@ -346,6 +347,7 @@ class BrowserAgent:
 			self.task_id = task.id
 			await self._emit("agent_spawned", {
 				"agent_id": self.task_id,
+				"name": self.name,
 				"task": self.prompt,
 				"session_id": self.session_id,
 				"live_url": self.live_url,
@@ -495,6 +497,7 @@ class BrowserAgent:
 			self.task_id = task.id
 			await self._emit("agent_spawned", {
 				"agent_id": self.task_id,
+				"name": self.name,
 				"task": self.prompt,
 				"live_url": self.live_url,
 				"share_url": self.share_url,
@@ -559,9 +562,9 @@ class Orchestrator:
 		"""Return all currently paused agents."""
 		return [a for a in self._agents if a.state == AgentState.PAUSED]
 
-	def add_prompt(self, prompt: str) -> BrowserAgent:
+	def add_prompt(self, prompt: str, name: str | None = None) -> BrowserAgent:
 		"""Add a new browser agent. Safe to call before or during run()."""
-		agent = BrowserAgent(client, prompt, on_event=self.on_event)
+		agent = BrowserAgent(client, prompt, on_event=self.on_event, name=name)
 		self._agents.append(agent)
 		if self._running:
 			self._pending.put_nowait(agent)

@@ -216,10 +216,10 @@
   <div
     class={cn(
       'touch-none select-none flex flex-col overflow-hidden relative size-full',
-      'rounded-2xl border border-white/25 dark:border-white/15',
-      'bg-white/25 dark:bg-white/10 backdrop-blur-2xl',
+      'rounded-2xl border border-white/25',
+      'bg-white/25 backdrop-blur-2xl',
       'shadow-[0_4px_24px_rgba(0,0,0,0.06),0_12px_28px_-4px_rgba(0,0,0,0.12),0_20px_40px_-8px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.4)]',
-      'ring-1 ring-white/30 dark:ring-white/15',
+      'ring-1 ring-white/30',
       isResizing && 'ring-2 ring-accent/40'
     )}
   >
@@ -243,7 +243,7 @@
     <!-- Expand button: z-30 sits above all resize handles (z-10) -->
     <button
       type="button"
-      class="absolute top-2 right-2 z-30 p-1.5 rounded-lg text-(--text-muted) hover:text-(--text) hover:bg-white/40 dark:hover:bg-white/15 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/50"
+      class="absolute top-2 right-2 z-30 p-1.5 rounded-lg text-(--text-muted) hover:text-(--text) hover:bg-white/40 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/50"
       aria-label="Expand"
       onclick={(e) => { e.stopPropagation(); openExpand(); }}
       onpointerdown={(e) => e.stopPropagation()}

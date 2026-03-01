@@ -46,7 +46,7 @@
       {#if onSpawnAgent}
         <button
           onclick={onSpawnAgent}
-          class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-text-faint hover:text-text hover:bg-white/30 dark:hover:bg-white/10 transition-all"
+          class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-text-faint hover:text-text hover:bg-white/30 transition-all"
           aria-label="Spawn new agent"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

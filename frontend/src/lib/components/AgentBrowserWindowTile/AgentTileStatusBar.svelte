@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cn } from '$lib/utils';
+  import { palette } from '$lib/palette';
 
   /** Display status: e.g. "Done", "In-Progress", "Blocked". Any string allowed. */
   let { status = '—', agentName = '—', class: className = '' }: {
@@ -11,16 +12,16 @@
   const statusSlug = $derived(status.toLowerCase().replace(/\s+/g, '-'));
 
   const spinColor = $derived(
-    statusSlug === 'done' ? '#10b981'
-    : statusSlug === 'in-progress' ? '#f59e0b'
-    : statusSlug === 'blocked' ? '#ef4444'
-    : '#6b7280'
+    statusSlug === 'done' ? palette.emerald
+    : statusSlug === 'in-progress' ? palette.amber
+    : statusSlug === 'blocked' ? palette.red
+    : 'var(--text-muted)'
   );
 
   const textClass = $derived(
-    statusSlug === 'done' ? 'text-emerald-500'
-    : statusSlug === 'in-progress' ? 'text-amber-500'
-    : statusSlug === 'blocked' ? 'text-red-500'
+    statusSlug === 'done' ? 'text-[var(--status-emerald)]'
+    : statusSlug === 'in-progress' ? 'text-[var(--status-amber)]'
+    : statusSlug === 'blocked' ? 'text-danger'
     : 'text-(--text-muted)'
   );
 </script>

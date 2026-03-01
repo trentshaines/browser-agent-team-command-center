@@ -95,7 +95,7 @@
         </div>
 
         <!-- Right: Tabbed sidebar — same as FloatingChatWidget -->
-        <div class="flex-[3] flex flex-col bg-white/95 border-l border-border min-w-0">
+        <div class="flex-[3] flex flex-col bg-surface/85 backdrop-blur-xl border-l border-border min-w-0">
           <!-- Tab bar -->
           <div class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5">
             <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">

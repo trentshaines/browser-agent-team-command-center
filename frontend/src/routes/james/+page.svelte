@@ -5,7 +5,7 @@
   import AgentTiles from "$lib/components/AgentTiles.svelte";
   import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
   import Logo from "$lib/components/Logo.svelte";
-  import { tasks, streamUrl, type AgentPlan, type TaskResponse } from '$lib/api';
+  import { tasks, streamUrl, type AgentPlan } from '$lib/api';
   import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
@@ -330,7 +330,7 @@
     height: 45vw;
     top: -10%;
     left: -10%;
-    background: radial-gradient(circle, #c4b5fd 0%, #ddd6fe 40%, transparent 70%);
+    background: radial-gradient(circle, rgba(124,58,237,0.4) 0%, rgba(124,58,237,0.15) 40%, transparent 70%);
     animation: drift-1 18s ease-in-out infinite;
   }
 
@@ -339,7 +339,7 @@
     height: 40vw;
     bottom: -5%;
     right: -8%;
-    background: radial-gradient(circle, #fbcfe8 0%, #fce7f3 40%, transparent 70%);
+    background: radial-gradient(circle, rgba(219,39,119,0.35) 0%, rgba(219,39,119,0.12) 40%, transparent 70%);
     animation: drift-2 22s ease-in-out infinite;
   }
 
@@ -348,7 +348,7 @@
     height: 35vw;
     top: 40%;
     right: 20%;
-    background: radial-gradient(circle, #bfdbfe 0%, #dbeafe 40%, transparent 70%);
+    background: radial-gradient(circle, rgba(37,99,235,0.35) 0%, rgba(37,99,235,0.12) 40%, transparent 70%);
     animation: drift-3 20s ease-in-out infinite;
   }
 
@@ -357,7 +357,7 @@
     height: 30vw;
     bottom: 15%;
     left: 25%;
-    background: radial-gradient(circle, #d9f99d 0%, #ecfccb 40%, transparent 70%);
+    background: radial-gradient(circle, rgba(217,119,6,0.3) 0%, rgba(217,119,6,0.1) 40%, transparent 70%);
     animation: drift-4 24s ease-in-out infinite;
   }
 

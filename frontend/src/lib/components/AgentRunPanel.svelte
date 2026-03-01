@@ -45,9 +45,9 @@
           class="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-hover transition-colors"
         >
           {#if run.status === 'running'}
-            <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse shrink-0"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-status-violet animate-pulse shrink-0"></span>
           {:else if run.status === 'complete'}
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-status-emerald shrink-0"></span>
           {:else}
             <span class="w-1.5 h-1.5 rounded-full bg-danger shrink-0"></span>
           {/if}
@@ -84,7 +84,7 @@
                     {#if step.success === false}
                       <span class="text-danger shrink-0 ml-auto text-[10px]">✗</span>
                     {:else if step.success}
-                      <span class="text-emerald-600 shrink-0 ml-auto text-[10px]">✓</span>
+                      <span class="text-status-emerald shrink-0 ml-auto text-[10px]">✓</span>
                     {/if}
                   </div>
                   {#if step.thought}
@@ -95,9 +95,9 @@
             {/if}
 
             {#if run.result}
-              <div class="px-3 py-2 bg-emerald-50 border-t border-emerald-100 text-[11px]">
-                <span class="text-emerald-600 mr-1">↳</span>
-                <span class="text-emerald-700">{run.result}</span>
+              <div class="px-3 py-2 bg-[var(--status-emerald-bg)] border-t border-[var(--status-emerald-border)] text-[11px]">
+                <span class="text-status-emerald mr-1">↳</span>
+                <span class="text-status-emerald">{run.result}</span>
               </div>
             {/if}
           </div>
