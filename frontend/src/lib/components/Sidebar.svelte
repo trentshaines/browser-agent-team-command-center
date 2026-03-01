@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { authStore } from '$lib/stores/auth';
   import { sessionsStore, sessionsLoading } from '$lib/stores/sessions';
-  import { PlusIcon, Trash2Icon, LogOutIcon } from 'lucide-svelte';
+  import { PlusIcon, Trash2Icon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
   import CreateProjectModal from '$lib/components/CreateProjectModal.svelte';
   import { cn } from '$lib/utils';
@@ -56,8 +56,6 @@
       New Project
     </Button>
   </div>
-
-  <CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} />
 
   <!-- Session list -->
   <nav class="flex-1 overflow-y-auto px-2 pb-2">
@@ -134,3 +132,5 @@
     {/if}
   </div>
 </aside>
+
+<CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} />
