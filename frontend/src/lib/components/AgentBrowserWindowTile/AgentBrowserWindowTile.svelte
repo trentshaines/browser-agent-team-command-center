@@ -2,8 +2,7 @@
   import { cn } from '$lib/utils';
   import { agentBrowserWindowTileConfig } from './config';
   import AgentTileStatusBar from './AgentTileStatusBar.svelte';
-  import { fade, scale } from 'svelte/transition';
-  import { quintOut } from 'svelte/easing';
+  import AgentExpandedModal from './AgentExpandedModal.svelte';
   import type { Message } from '$lib/api';
 
   import defaultTileImage from '$lib/assets/AgentBrowserWindowTile.png';
@@ -66,7 +65,6 @@
 
   // — Expand modal —
   let isOpen = $state(false);
-  let chatScrollEl = $state<HTMLDivElement | null>(null);
   let modalOrigin = $state('50% 50%');
 
   function openExpand() {
@@ -78,31 +76,6 @@
     }
     isOpen = true;
   }
-  function closeExpand() { isOpen = false; }
-
-  // Escape key + body scroll lock while modal is open
-  $effect(() => {
-    if (!isOpen) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeExpand();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = '';
-    };
-  });
-
-  // Auto-scroll chat to bottom when modal opens or messages change
-  $effect(() => {
-    const open = isOpen;
-    const _len = messages.length;
-    if (!open) return;
-    requestAnimationFrame(() => {
-      if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-    });
-  });
 
   // — Drag to reposition —
   let dragOffset = $state({ x: 0, y: 0 });
@@ -223,87 +196,16 @@
   </div>
 {/snippet}
 
-<!-- Expanded modal — rendered in normal DOM flow but z-[9999] puts it above everything -->
-{#if isOpen}
-  <!-- Backdrop -->
-  <div
-    transition:fade={{ duration: 280 }}
-    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-    role="presentation"
-    onclick={closeExpand}
-  >
-    <!-- Glass outer frame (scales in/out) -->
-    <div
-      in:scale={{ start: 0.93, duration: 420, easing: quintOut }}
-      out:scale={{ start: 0.93, duration: 220 }}
-      class="relative"
-      style="transform-origin: {modalOrigin}"
-    >
-      <!-- Glass halo — sits behind the modal, adds the frosted outer ring -->
-      <div
-        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.20),0_8px_24px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.6)]"
-        aria-hidden="true"
-      ></div>
-
-      <!-- Modal: 70% browser | 30% chat -->
-      <div
-        class="relative flex w-[90vw] h-[85vh] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Expanded browser view"
-        tabindex="-1"
-        onclick={(e) => e.stopPropagation()}
-        onkeydown={(e) => { if (e.key === 'Escape') closeExpand(); }}
-      >
-        <!-- Left: Browser screenshot (70%) — stays dark since it's a webpage screenshot -->
-        <div class="relative flex-[7] min-w-0">
-          <img
-            {src}
-            {alt}
-            class="size-full object-cover"
-            draggable="false"
-          />
-          <!-- Agent info overlay at bottom -->
-          <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between">
-            <span class="text-white/90 text-sm font-medium">{agentName}</span>
-            <span class="text-white/60 text-xs">{status}</span>
-          </div>
-
-        </div>
-
-        <!-- Right: Chat stream (30%) — light theme matching the app -->
-        <div class="flex-[3] flex flex-col bg-white dark:bg-surface border-l border-border min-w-0">
-          <!-- Header -->
-          <div class="shrink-0 px-4 py-3 border-b border-border flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="text-(--text-muted)" aria-hidden="true">
-              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-            </svg>
-            <span class="text-(--text-muted) text-xs font-medium uppercase tracking-widest">Chat</span>
-          </div>
-
-          <!-- Messages -->
-          <div
-            bind:this={chatScrollEl}
-            class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4"
-          >
-            {#if messages.length === 0}
-              <p class="text-(--text-faint) text-xs text-center mt-10 select-none">No chat messages</p>
-            {:else}
-              {#each messages as msg (msg.id)}
-                <div class="flex flex-col gap-1">
-                  <span class="text-[11px] font-medium {msg.role === 'user' ? 'text-(--text-muted)' : 'text-accent'}">
-                    {msg.role === 'user' ? 'You' : agentName}
-                  </span>
-                  <p class="text-sm text-(--text) leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
+<AgentExpandedModal
+  {isOpen}
+  {src}
+  {alt}
+  {agentName}
+  {status}
+  {messages}
+  {modalOrigin}
+  onClose={() => (isOpen = false)}
+/>
 
 <div
   bind:this={containerEl}

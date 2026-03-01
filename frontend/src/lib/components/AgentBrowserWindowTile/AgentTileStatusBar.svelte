@@ -35,7 +35,7 @@
 >
   <!-- Spinning gradient live indicator -->
   <div
-    class="size-3 shrink-0 animate-spin rounded-full [animation-duration:1.5s]"
+    class="size-3 shrink-0 rounded-full {statusSlug !== 'done' ? 'animate-spin [animation-duration:1.5s]' : ''}"
     style="background: conic-gradient(from 0deg, transparent 0%, {spinColor} 70%, transparent 100%)"
   ></div>
 
