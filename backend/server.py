@@ -20,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.agent import BrowserAgent, Orchestrator, task_refiner, summarize_results, _bedrock_call_haiku
+from backend.agent import BrowserAgent, Orchestrator, task_refiner, summarize_results
+from helpers import _bedrock_call_haiku
 
 app = FastAPI(title="Browser Agent API")
 

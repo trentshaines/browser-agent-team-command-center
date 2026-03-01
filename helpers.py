@@ -87,6 +87,23 @@ def _bedrock_call(system_prompt: str, user_message: str, max_tokens: int = 1024)
 	})
 
 
+def _bedrock_call_haiku(system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+	"""Fast/cheap Haiku call for message rewriting."""
+	token = os.environ["AWS_BEARER_TOKEN_BEDROCK"]
+	region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+	model_id = "us.anthropic.claude-haiku-3-5-20241022-v1:0"
+	url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/invoke"
+	body = {
+		"anthropic_version": "bedrock-2023-05-31",
+		"max_tokens": max_tokens,
+		"system": system_prompt,
+		"messages": [{"role": "user", "content": user_message}],
+	}
+	resp = httpx.post(url, json=body, headers={"Authorization": f"Bearer {token}"}, timeout=30)
+	resp.raise_for_status()
+	return resp.json()["content"][0]["text"]
+
+
 def _bedrock_vision_call(image_url: str, prompt: str, max_tokens: int = 1024) -> str:
 	img_resp = httpx.get(image_url, timeout=30, follow_redirects=True)
 	img_resp.raise_for_status()
