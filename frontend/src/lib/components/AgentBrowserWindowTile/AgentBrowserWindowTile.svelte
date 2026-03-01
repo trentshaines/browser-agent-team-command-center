@@ -4,6 +4,7 @@
   import AgentTileStatusBar from './AgentTileStatusBar.svelte';
   import AgentExpandedModal from './AgentExpandedModal.svelte';
   import type { Message } from '$lib/api';
+  import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
 
   import defaultTileImage from '$lib/assets/AgentBrowserWindowTile.png';
 
@@ -47,6 +48,8 @@
     onResume,
     /** Whether the agent is currently thinking (e.g. just reprompted). */
     thinking = false,
+    /** The agent run data for this specific agent (used in expanded modal progress view). */
+    agentRun = undefined,
   }: {
     src?: string;
     alt?: string;
@@ -65,6 +68,7 @@
     onExpandChange?: (expanded: boolean) => void;
     onResume?: (() => void) | undefined;
     thinking?: boolean;
+    agentRun?: AgentRun;
   } = $props();
 
   const isBlocked = $derived(status.toLowerCase() === 'blocked');
@@ -225,6 +229,7 @@
   {liveUrl}
   {blockedMessage}
   {onResume}
+  {agentRun}
   onClose={() => { isOpen = false; onExpandChange?.(false); }}
 />
 

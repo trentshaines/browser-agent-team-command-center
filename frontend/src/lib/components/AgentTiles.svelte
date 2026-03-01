@@ -97,6 +97,7 @@
         liveUrl={agent.liveUrl}
         blockedMessage={agent.handoffMessage}
         thinking={agent.thinking}
+        agentRun={runs.find(r => r.id === agent.agent_id)}
         {onExpandChange}
         onResume={onResumeAgent ? () => onResumeAgent(agent.agent_id) : undefined}
       />

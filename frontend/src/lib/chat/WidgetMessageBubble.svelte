@@ -9,11 +9,13 @@
     senderName,
     compact = false,
     category,
+    agentNames = [],
   }: {
     message: Message;
     senderName?: string;
     compact?: boolean;
     category?: MessageCategory;
+    agentNames?: string[];
   } = $props();
 
   const isBlocked = $derived(category === 'blocked');
@@ -40,6 +42,26 @@
     if (message.role === 'user') return '';
     return marked.parse(message.content, { async: false, breaks: true }) as string;
   });
+
+  /** Split user message text into plain segments and @mention segments (matched against known agents). */
+  type Segment = { type: 'text'; value: string } | { type: 'mention'; name: string };
+  const userSegments = $derived.by((): Segment[] => {
+    if (message.role !== 'user' || agentNames.length === 0) return [{ type: 'text', value: message.content }];
+    // Build regex that matches @<known agent name>, longest names first to avoid partial matches
+    const sorted = [...agentNames].sort((a, b) => b.length - a.length);
+    const escaped = sorted.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const re = new RegExp(`@(${escaped.join('|')})`, 'g');
+    const parts: Segment[] = [];
+    let last = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(message.content)) !== null) {
+      if (match.index > last) parts.push({ type: 'text', value: message.content.slice(last, match.index) });
+      parts.push({ type: 'mention', name: match[1] });
+      last = re.lastIndex;
+    }
+    if (last < message.content.length) parts.push({ type: 'text', value: message.content.slice(last) });
+    return parts;
+  });
 </script>
 
 {#if isBlocked}
@@ -55,7 +77,7 @@
   <div class="py-0.5 flex items-baseline gap-1.5 text-xs leading-snug">
     <span class="font-semibold shrink-0" style="color: {nameColor()}">{displayName}</span>
     {#if message.role === 'user'}
-      <span class="text-text whitespace-pre-wrap">{message.content}</span>
+      <span class="whitespace-pre-wrap">{#each userSegments as seg}{#if seg.type === 'mention'}<span class="font-semibold" style="color: {senderColor(seg.name)}">@{seg.name}</span>{:else}<span class="text-text">{seg.value}</span>{/if}{/each}</span>
     {:else}
       <span class="text-text widget-prose">{@html renderedHtml}</span>
     {/if}
@@ -68,9 +90,7 @@
       <span class="text-text-faint text-[10px] shrink-0">{timeStr}</span>
     </div>
     {#if message.role === 'user'}
-      <p class="text-text text-xs mt-0.5 whitespace-pre-wrap leading-snug">
-        {message.content}
-      </p>
+      <p class="text-xs mt-0.5 whitespace-pre-wrap leading-snug">{#each userSegments as seg}{#if seg.type === 'mention'}<span class="font-semibold" style="color: {senderColor(seg.name)}">@{seg.name}</span>{:else}<span class="text-text">{seg.value}</span>{/if}{/each}</p>
     {:else}
       <div class="text-text text-xs mt-0.5 leading-snug widget-prose">
         {@html renderedHtml}

@@ -37,6 +37,20 @@ app.add_middleware(
 )
 
 
+_shutting_down = asyncio.Event()
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    """Signal all SSE generators to exit, then close the log file."""
+    _shutting_down.set()
+    # Also poison all queues in case any generator is blocked on q.get()
+    for queues in session_queues.values():
+        for q in queues:
+            await q.put(None)
+    _log_handle.close()
+
+
 # ---------------------------------------------------------------------------
 # In-memory state
 # ---------------------------------------------------------------------------
@@ -247,8 +261,11 @@ async def stream_session(session_id: str):
 
     async def event_generator():
         try:
-            while True:
-                event = await q.get()
+            while not _shutting_down.is_set():
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
                 if event is None:
                     break
                 event_type = event.pop("event", "message")

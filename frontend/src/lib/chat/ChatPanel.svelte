@@ -53,7 +53,7 @@
         {@const prevSender = i > 0 ? (messages[i - 1].senderName ?? (messages[i - 1].role === 'user' ? 'You' : 'Orchestrator')) : null}
         {@const thisSender = msg.senderName ?? (msg.role === 'user' ? 'You' : 'Orchestrator')}
         {@const sameSender = prevSender === thisSender}
-        <WidgetMessageBubble message={msg} senderName={msg.senderName} compact={sameSender} category={msg.category} />
+        <WidgetMessageBubble message={msg} senderName={msg.senderName} compact={sameSender} category={msg.category} agentNames={agents.map(a => a.name)} />
       {/each}
     {/if}
   </div>

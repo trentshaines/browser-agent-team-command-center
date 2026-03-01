@@ -5,6 +5,7 @@
   import ProgressPanel from '$lib/chat/ProgressPanel.svelte';
   import type { Message } from '$lib/api';
   import type { WidgetMessage } from '$lib/chat/types';
+  import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
 
   let {
     isOpen,
@@ -18,6 +19,7 @@
     blockedMessage = null,
     onResume,
     onClose,
+    agentRun = undefined,
   }: {
     isOpen: boolean;
     src: string;
@@ -30,6 +32,7 @@
     blockedMessage?: string | null;
     onResume?: (() => void) | undefined;
     onClose: () => void;
+    agentRun?: AgentRun;
   } = $props();
 
   const isBlocked = $derived(status.toLowerCase() === 'blocked');
@@ -162,7 +165,7 @@
             {#if activeTab === 'chat'}
               <ChatPanel messages={widgetMessages} />
             {:else}
-              <ProgressPanel />
+              <ProgressPanel agentRuns={agentRun ? [agentRun] : []} />
             {/if}
           </div>
         </div>
