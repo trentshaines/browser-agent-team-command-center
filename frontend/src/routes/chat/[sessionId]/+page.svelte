@@ -70,7 +70,7 @@
     }
     await tick();
     scrollToBottom(true);
-    connectSSE(id);
+    await connectSSE(id);
 
     // Handle starter prompt from query param
     const starter = page.url.searchParams.get('starter');
@@ -82,9 +82,15 @@
     }
   }
 
-  function connectSSE(id: string) {
+  function connectSSE(id: string): Promise<void> {
     const url = messagesApi.streamUrl(id);
     eventSource = new EventSource(url, { withCredentials: true });
+
+    // Resolve once the connection is open (or immediately on error so callers aren't stuck)
+    const ready = new Promise<void>((resolve) => {
+      eventSource!.addEventListener('open', () => resolve(), { once: true });
+      eventSource!.addEventListener('error', () => resolve(), { once: true });
+    });
 
     eventSource.addEventListener('delta', (e) => {
       const data = JSON.parse(e.data);
@@ -174,6 +180,8 @@
         error = 'Connection lost. Refresh to reconnect.';
       }
     };
+
+    return ready;
   }
 
   function closeSSE() {
