@@ -176,19 +176,48 @@ Return the JSON result from the script exactly as-is."""
                             agent_run_id = pending_agent_runs.pop(tool_id, None)
                             if agent_run_id:
                                 try:
+                                    # Parse JSONL stdout from browser_agent.py
+                                    raw_content = getattr(block, "content", "") or ""
+                                    if isinstance(raw_content, list):
+                                        raw_content = " ".join(
+                                            getattr(b, "text", "") for b in raw_content if hasattr(b, "text")
+                                        )
+                                    steps = []
+                                    final_result = None
+                                    for line in raw_content.splitlines():
+                                        line = line.strip()
+                                        if not line:
+                                            continue
+                                        try:
+                                            rec = json.loads(line)
+                                            if rec.get("type") == "browser_step":
+                                                steps.append(rec)
+                                            elif rec.get("type") == "browser_result":
+                                                final_result = rec
+                                        except json.JSONDecodeError:
+                                            pass
+
+                                    # Emit each step as agent_log SSE
+                                    for step in steps:
+                                        await sse.publish(session_id_str, "agent_log", {
+                                            "agent_run_id": str(agent_run_id),
+                                            **{k: v for k, v in step.items() if k != "type"},
+                                        })
+
                                     result_row = await db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
                                     agent_run = result_row.scalar_one_or_none()
                                     if agent_run:
-                                        agent_run.status = AgentRunStatus.COMPLETE
+                                        agent_run.status = AgentRunStatus.COMPLETE if (final_result and final_result.get("success")) else AgentRunStatus.ERROR
+                                        agent_run.result = final_result.get("result") if final_result else None
                                         agent_run.completed_at = datetime.now(timezone.utc)
                                     await db.flush()
                                     await sse.publish(session_id_str, "agent_event", {
                                         "type": "agent_complete",
                                         "agent_run_id": str(agent_run_id),
-                                        "result": None,
-                                        "total_steps": 0,
+                                        "result": final_result.get("result") if final_result else None,
+                                        "total_steps": len(steps),
                                     })
-                                    logger.info("Agent complete: run=%s", agent_run_id)
+                                    logger.info("Agent complete: run=%s steps=%d", agent_run_id, len(steps))
                                 except Exception:
                                     logger.warning("Failed to update AgentRun on completion", exc_info=True)
                 # ResultMessage has the final synthesized result
