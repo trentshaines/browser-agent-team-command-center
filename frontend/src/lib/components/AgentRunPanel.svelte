@@ -1,7 +1,7 @@
 <script lang="ts">
   export interface AgentStep {
     step: number;
-    url?: string;
+    url?: string | null;
     action_type?: string;
     thought?: string;
     evaluation?: string;
@@ -12,7 +12,7 @@
 
   export interface AgentRun {
     id: string;
-    name: string;
+    name?: string;
     task: string;
     status: 'running' | 'complete' | 'error';
     steps: AgentStep[];
