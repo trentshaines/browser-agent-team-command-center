@@ -9,6 +9,9 @@ backend: ## Start backend on port 8000
 frontend: ## Start frontend on port 5173
 	cd frontend && npm run dev
 
+convex:
+	cd frontend && npx convex dev
+
 install: ## Install all dependencies
 	uv sync
 	cd frontend && npm install
