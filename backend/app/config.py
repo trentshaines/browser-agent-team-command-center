@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     browser_agent_model: str = "google/gemini-2.0-flash-001"
 
+    # AWS Bedrock
+    aws_region: str = "us-east-1"
+    aws_bearer_token_bedrock: str = ""
+    llm_provider: str = ""  # set to "bedrock" to force Bedrock for the orchestrator
+
     # App
     frontend_url: str = "http://localhost:5173"
     environment: str = "development"

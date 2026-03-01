@@ -52,8 +52,11 @@ async def run_turn(
     try:
         await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
     except ImportError:
-        logger.info("claude_agent_sdk not available, falling back to direct Anthropic API")
-        await _run_with_anthropic(session_id_str, assistant_message_id, history, db, settings)
+        logger.info("claude_agent_sdk not available, falling back to direct API")
+        if settings.llm_provider == "bedrock":
+            await _run_with_bedrock(session_id_str, assistant_message_id, history, db, settings)
+        else:
+            await _run_with_anthropic(session_id_str, assistant_message_id, history, db, settings)
 
 
 async def _run_with_sdk(
@@ -209,6 +212,36 @@ async def _run_with_anthropic(
 
     async with client.messages.stream(
         model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=SYSTEM_PROMPT,
+        messages=history,
+    ) as stream:
+        async for text in stream.text_stream:
+            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
+            full_response += text
+
+    await _save_and_complete(session_id_str, message_id, full_response, db)
+
+
+async def _run_with_bedrock(
+    session_id_str: str,
+    message_id: uuid.UUID,
+    history: list[dict],
+    db: AsyncSession,
+    settings,
+) -> None:
+    import os
+    import anthropic
+
+    # Ensure botocore picks up the Bedrock API key for bearer token auth
+    if settings.aws_bearer_token_bedrock:
+        os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", settings.aws_bearer_token_bedrock)
+
+    client = anthropic.AsyncAnthropicBedrock(aws_region=settings.aws_region)
+    full_response = ""
+
+    async with client.messages.stream(
+        model="us.anthropic.claude-sonnet-4-6",
         max_tokens=4096,
         system=SYSTEM_PROMPT,
         messages=history,
