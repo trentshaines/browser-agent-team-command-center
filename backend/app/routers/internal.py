@@ -30,10 +30,10 @@ class AgentEventData(BaseModel):
     url: str | None = Field(None, max_length=2048)
     action_type: str | None = Field(None, max_length=128)
     action_params: dict | None = None
-    thought: str | None = Field(None, max_length=4096)
-    evaluation: str | None = Field(None, max_length=4096)
-    memory: str | None = Field(None, max_length=4096)
-    extracted_content: str | None = Field(None, max_length=8192)
+    thought: str | None = Field(None, max_length=32768)
+    evaluation: str | None = Field(None, max_length=32768)
+    memory: str | None = Field(None, max_length=32768)
+    extracted_content: str | None = Field(None, max_length=131072)
     success: bool | None = None
     error: str | None = Field(None, max_length=2048)
     # complete fields
