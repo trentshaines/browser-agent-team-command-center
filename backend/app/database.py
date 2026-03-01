@@ -42,9 +42,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with get_session_factory()() as session:
         try:
             yield session
-            # Only commit if there are pending writes — skips the round-trip on pure reads
-            if session.dirty or session.new or session.deleted:
-                await session.commit()
+            await session.commit()
         except Exception:
             await session.rollback()
             raise
