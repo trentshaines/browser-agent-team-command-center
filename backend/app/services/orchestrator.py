@@ -177,6 +177,7 @@ Return the JSON result from the script exactly as-is."""
         options=ClaudeAgentOptions(
             system_prompt=SYSTEM_PROMPT,
             allowed_tools=["Task"],
+            permission_mode="bypassPermissions",
             agents={
                 "browser-agent": AgentDefinition(
                     description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",

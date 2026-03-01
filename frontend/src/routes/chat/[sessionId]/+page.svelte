@@ -18,6 +18,10 @@
   // Agent run tracking
   let agentRuns = $state<AgentRun[]>([]);
 
+  // Stale-request guard: incremented on each loadMessages call so an in-flight
+  // fetch from a previous session cannot overwrite state for the current one.
+  let loadSeq = 0;
+
   // Smart scroll: only snap to bottom if user is already near the bottom
   let autoScroll = true;
 
@@ -37,17 +41,21 @@
   });
 
   async function loadMessages(id: string) {
+    const seq = ++loadSeq;
     loading = true;
     error = null;
     autoScroll = true;
     agentRuns = [];
     closeSSE();
     try {
-      messageList = await messagesApi.list(id);
+      const result = await messagesApi.list(id);
+      if (seq !== loadSeq) return; // superseded by a newer session selection
+      messageList = result;
     } catch (e) {
+      if (seq !== loadSeq) return;
       error = 'Failed to load messages';
     } finally {
-      loading = false;
+      if (seq === loadSeq) loading = false;
     }
     await tick();
     scrollToBottom(true);
