@@ -4,7 +4,6 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from app.limiter import limiter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -100,7 +99,6 @@ async def google_auth_redirect():
 
 
 @router.post("/google", response_model=Token)
-@limiter.limit("10/minute")
 async def google_auth(
     request: Request,
     data: GoogleAuthRequest,
@@ -141,7 +139,6 @@ async def google_auth(
 
 
 @router.post("/refresh")
-@limiter.limit("10/minute")
 async def refresh_tokens(
     request: Request,
     data: RefreshTokenRequest | None = None,
