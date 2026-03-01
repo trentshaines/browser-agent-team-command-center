@@ -6,45 +6,13 @@
     MessageSquareIcon,
     WrenchIcon,
   } from "lucide-svelte";
-  import MessageBubble from "$lib/components/MessageBubble.svelte";
-  import ChatInput from "$lib/components/ChatInput.svelte";
-  import type { Message } from "$lib/api";
+  import { FloatingChatWidget } from "$lib/chat";
 
   const apiUrl = $derived($page.url.origin + "/api");
   const backendUrl =
     typeof import.meta.env !== "undefined"
       ? (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
       : "";
-
-  // Floating chat widget
-  type TabId = "chat" | "history";
-  let activeTab = $state<TabId>("chat");
-  let chatMessages = $state<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hi! This is the dev chat widget. Type a message below.",
-      created_at: new Date().toISOString(),
-    },
-  ]);
-
-  function sendMessage(content: string) {
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-      created_at: new Date().toISOString(),
-    };
-    chatMessages = [...chatMessages, userMsg];
-    // Placeholder assistant reply for demo
-    const assistantMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: `You said: "${content}" — (widget is local-only, no backend.)`,
-      created_at: new Date().toISOString(),
-    };
-    chatMessages = [...chatMessages, assistantMsg];
-  }
 </script>
 
 <svelte:head>
@@ -150,63 +118,5 @@
     /james — dev homepage. Root / is unchanged for your coworker.
   </footer>
 
-  <!-- Floating chat widget -->
-  <div
-    class="fixed bottom-6 right-6 w-[380px] max-h-[520px] flex flex-col rounded-2xl border border-border bg-background shadow-lg overflow-hidden z-50"
-  >
-    <!-- Header with tabs -->
-    <header class="shrink-0 border-b border-border-subtle bg-surface px-3 py-2">
-      <div class="flex rounded-lg bg-surface-hover p-0.5" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "chat"}
-          class="flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors {activeTab ===
-          'chat'
-            ? 'bg-background text-text shadow-sm'
-            : 'text-text-muted hover:text-text'}"
-          onclick={() => (activeTab = "chat")}
-        >
-          Chat
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "history"}
-          class="flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors {activeTab ===
-          'history'
-            ? 'bg-background text-text shadow-sm'
-            : 'text-text-muted hover:text-text'}"
-          onclick={() => (activeTab = "history")}
-        >
-          History
-        </button>
-      </div>
-    </header>
-
-    <!-- Middle: chat display or history -->
-    <div class="flex-1 flex flex-col min-h-0">
-      {#if activeTab === "chat"}
-        <div
-          class="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-1 min-h-[200px]"
-        >
-          {#each chatMessages as msg (msg.id)}
-            <MessageBubble message={msg} />
-          {/each}
-        </div>
-        <div class="shrink-0 border-t border-border-subtle">
-          <ChatInput onsubmit={sendMessage} />
-        </div>
-      {:else}
-        <div
-          class="flex-1 overflow-y-auto px-3 py-4 text-sm text-text-muted text-center"
-        >
-          <p>No history yet.</p>
-          <p class="mt-2 text-text-faint text-xs">
-            Switch to Chat to send messages.
-          </p>
-        </div>
-      {/if}
-    </div>
-  </div>
+  <FloatingChatWidget />
 </div>

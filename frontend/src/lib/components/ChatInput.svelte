@@ -43,15 +43,15 @@
 </script>
 
 <div class="border-t border-border-subtle bg-background px-4 py-3">
-  <div class="max-w-3xl mx-auto">
-    <div class="flex items-end gap-2 bg-surface-hover border border-border rounded-2xl px-4 py-2 focus-within:border-border transition-colors">
+  <div class="max-w-3xl mx-auto transition-shadow duration-200 hover:shadow-lg rounded-2xl">
+    <div class="flex items-end gap-2 bg-surface-hover border border-border rounded-2xl px-4 py-3 focus-within:border-accent transition-colors min-h-16">
       <textarea
         bind:this={textarea}
         bind:value
         onkeydown={onkeydown}
         oninput={autoresize}
         placeholder="Message the agent team..."
-        rows="1"
+        rows="2"
         disabled={disabled && !streaming}
         class={cn(
           'flex-1 bg-transparent text-sm text-text placeholder:text-text-faint resize-none outline-none py-1 max-h-[200px] leading-relaxed',
