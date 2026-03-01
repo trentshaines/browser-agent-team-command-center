@@ -226,6 +226,10 @@ Return the JSON result from the script exactly as-is."""
                         "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
                         "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
                     },
+                    # Exclude user-level settings so ~/.claude/ hooks (e.g. OMC) don't
+                    # fire inside the subprocess and crash with "Stream closed".
+                    # API key comes from ANTHROPIC_API_KEY env var, so this is safe.
+                    setting_sources=["project", "local"],
                 ),
             ):
                 # AssistantMessage has a content list of TextBlock / ThinkingBlock / ToolUseBlock
