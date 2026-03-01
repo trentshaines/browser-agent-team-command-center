@@ -302,6 +302,13 @@
     return () => document.removeEventListener('keydown', onKeyDown);
   });
 
+  // Auto-switch to Browser tab as soon as an agent is spawned (don't wait for screenshots)
+  $effect(() => {
+    if (agentRuns.some(r => r.status === 'running') && activeTab === 'chat') {
+      activeTab = 'browser';
+    }
+  });
+
   onDestroy(() => {
     closeSSE();
   });
@@ -404,7 +411,47 @@
   <!-- Browser tab -->
   {:else}
     <div id="panel-browser" role="tabpanel" class="flex-1 overflow-y-auto p-4">
-      {#if Object.keys(agentFrames).length === 0}
+      {#if Object.keys(agentFrames).length > 0}
+        <!-- Live screenshot tiles -->
+        <AgentTiles frames={agentFrames} fullscreen />
+      {:else if agentRuns.length > 0}
+        <!-- Agents are running but no screenshots yet (Chromium starting up, or cloud mode) -->
+        {@const cols = agentRuns.length <= 1 ? 1 : agentRuns.length <= 4 ? 2 : 3}
+        <div class="grid gap-3 h-full" style="grid-template-columns: repeat({cols}, minmax(0, 1fr)); align-content: start">
+          {#each agentRuns as run (run.id)}
+            <div class="rounded-xl border border-border overflow-hidden bg-background flex flex-col">
+              <!-- Placeholder viewport -->
+              <div class="relative bg-[#1a1a1a] aspect-video flex items-center justify-center">
+                {#if run.status === 'running'}
+                  <div class="flex flex-col items-center gap-2">
+                    <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-[10px] text-text-faint font-mono">waiting for screenshot…</span>
+                  </div>
+                {:else if run.status === 'error'}
+                  <span class="text-[11px] text-danger font-mono">agent error</span>
+                {:else}
+                  <span class="text-[11px] text-text-faint font-mono">complete</span>
+                {/if}
+                <!-- Status badge -->
+                <div class="absolute top-2 right-2">
+                  {#if run.status === 'running'}
+                    <span class="text-[9px] bg-violet-500/90 text-white px-1.5 py-0.5 rounded-full font-medium animate-pulse">live</span>
+                  {:else if run.status === 'error'}
+                    <span class="text-[9px] bg-red-500/90 text-white px-1.5 py-0.5 rounded-full font-medium">error</span>
+                  {:else}
+                    <span class="text-[9px] bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-full font-medium">done</span>
+                  {/if}
+                </div>
+              </div>
+              <!-- Task label -->
+              <div class="px-3 py-2 bg-surface">
+                <span class="text-[11px] text-text-muted line-clamp-2">{run.task}</span>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <!-- Truly idle — no agents at all -->
         <div class="flex flex-col items-center justify-center h-full text-center gap-3">
           <p class="text-text-faint text-sm">No browser agents active</p>
           <button
@@ -414,8 +461,6 @@
             ← Go to Chat and send a task that requires web browsing
           </button>
         </div>
-      {:else}
-        <AgentTiles frames={agentFrames} fullscreen />
       {/if}
     </div>
   {/if}
