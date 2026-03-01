@@ -57,7 +57,7 @@
         <div>
           <p class="text-xs font-medium text-text-muted">No active project</p>
           <p class="text-[11px] text-text-faint mt-1 leading-relaxed">
-            Create a new project with the <kbd class="inline-flex px-1.5 py-0.5 rounded bg-white/30 border border-border/40 text-[10px] font-mono font-medium text-text-muted mx-0.5">+</kbd> button to start chatting with your agent team.
+            Create a project to start chatting with your team.
           </p>
         </div>
       </div>
