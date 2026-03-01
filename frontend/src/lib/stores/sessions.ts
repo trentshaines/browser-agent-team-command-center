@@ -1,17 +1,22 @@
 import { writable } from 'svelte/store';
 import { sessions as sessionsApi, type Session } from '$lib/api';
 
+export const sessionsLoading = writable(false);
+
 function createSessionsStore() {
   const { subscribe, set, update } = writable<Session[]>([]);
 
   return {
     subscribe,
     async load() {
+      sessionsLoading.set(true);
       try {
         const data = await sessionsApi.list();
         set(data);
       } catch (e) {
         console.error('Failed to load sessions:', e);
+      } finally {
+        sessionsLoading.set(false);
       }
     },
     async create(): Promise<Session> {

@@ -38,10 +38,10 @@
       {#if message.content}
         <div class="prose">{@html html}</div>
       {:else if !thinking}
-        <div class="flex items-center gap-1.5 text-text-faint">
-          <span class="animate-pulse">●</span>
-          <span class="animate-pulse" style="animation-delay:0.15s">●</span>
-          <span class="animate-pulse" style="animation-delay:0.3s">●</span>
+        <div class="flex items-center gap-1.5 text-text-faint" aria-label="Thinking…" role="status">
+          <span class="animate-pulse" aria-hidden="true">●</span>
+          <span class="animate-pulse" aria-hidden="true" style="animation-delay:0.15s">●</span>
+          <span class="animate-pulse" aria-hidden="true" style="animation-delay:0.3s">●</span>
         </div>
       {/if}
     </div>

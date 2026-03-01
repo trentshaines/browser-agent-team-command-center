@@ -17,6 +17,7 @@
 
   let value = $state('');
   let textarea: HTMLTextAreaElement;
+  let _resizeRaf: number | null = null;
 
   function submit() {
     const trimmed = value.trim();
@@ -25,6 +26,8 @@
     value = '';
     if (textarea) {
       textarea.style.height = 'auto';
+      // Restore focus so user can type the next message immediately
+      textarea.focus();
     }
   }
 
@@ -32,13 +35,20 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
+    } else if (e.key === 'Escape' && streaming && onstop) {
+      e.preventDefault();
+      onstop();
     }
   }
 
   function autoresize(e: Event) {
-    const el = e.target as HTMLTextAreaElement;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    if (_resizeRaf !== null) return;
+    _resizeRaf = requestAnimationFrame(() => {
+      _resizeRaf = null;
+      const el = e.target as HTMLTextAreaElement;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    });
   }
 </script>
 
@@ -55,7 +65,7 @@
         disabled={disabled && !streaming}
         class={cn(
           'flex-1 bg-transparent text-sm text-text placeholder:text-text-faint resize-none outline-none py-1 max-h-[200px] leading-relaxed',
-          'disabled:opacity-50'
+          'disabled:opacity-50 disabled:pointer-events-none'
         )}
       ></textarea>
       {#if streaming && onstop}
@@ -78,6 +88,6 @@
         </Button>
       {/if}
     </div>
-    <p class="text-xs text-text-faint text-center mt-2">Enter to send · Shift+Enter for newline</p>
+    <p class="text-xs text-text-faint text-center mt-2">Enter to send · Shift+Enter for newline{streaming ? ' · Esc to stop' : ''}</p>
   </div>
 </div>

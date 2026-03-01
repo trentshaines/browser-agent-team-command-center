@@ -57,9 +57,10 @@ async def send_message(
     db.add(assistant_msg)
     await db.flush()
 
-    # Auto-title session from first message
+    # Auto-title session from first message (use stripped content)
     if session.title == "New Chat":
-        session.title = data.content[:60] + ("..." if len(data.content) > 60 else "")
+        stripped = data.content.strip()
+        session.title = stripped[:60] + ("..." if len(stripped) > 60 else "")
 
     assistant_msg_id = assistant_msg.id
 
