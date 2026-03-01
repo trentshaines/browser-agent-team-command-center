@@ -2,13 +2,14 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { authStore } from '$lib/stores/auth';
-  import { sessionsStore } from '$lib/stores/sessions';
-  import { PlusIcon, Trash2Icon, BotIcon, LogOutIcon } from 'lucide-svelte';
+  import { sessionsStore, sessionsLoading } from '$lib/stores/sessions';
+  import { PlusIcon, Trash2Icon, BotIcon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
   import { cn } from '$lib/utils';
 
   let deletingId = $state<string | null>(null);
   let creating = $state(false);
+  let confirmDeleteId = $state<string | null>(null);
 
   async function newChat() {
     if (creating) return;
@@ -24,6 +25,13 @@
   async function deleteSession(e: MouseEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
+    if (confirmDeleteId !== id) {
+      confirmDeleteId = id;
+      // Auto-dismiss confirm after 3s
+      setTimeout(() => { if (confirmDeleteId === id) confirmDeleteId = null; }, 3000);
+      return;
+    }
+    confirmDeleteId = null;
     deletingId = id;
     await sessionsStore.delete(id);
     deletingId = null;
@@ -53,14 +61,24 @@
       onclick={newChat}
       disabled={creating}
       class="w-full px-3 py-2"
+      aria-label="New chat"
     >
-      <PlusIcon size={15} />
+      {#if creating}
+        <LoaderIcon size={15} class="animate-spin" />
+      {:else}
+        <PlusIcon size={15} />
+      {/if}
       New Chat
     </Button>
   </div>
 
   <!-- Session list -->
   <nav class="flex-1 overflow-y-auto px-2 pb-2">
+    {#if $sessionsLoading}
+      <div class="flex justify-center py-6" role="status" aria-label="Loading chats">
+        <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+      </div>
+    {/if}
     {#each $sessionsStore as session (session.id)}
       {@const active = page.params.sessionId === session.id}
       <a
@@ -75,14 +93,28 @@
         <span class="truncate flex-1 mr-2">{session.title}</span>
         <div class="flex items-center gap-1.5 shrink-0">
           <span class="text-xs text-text-faint group-hover:text-text-muted">{formatDate(session.updated_at)}</span>
-          <Button
-            variant="danger"
-            onclick={(e) => deleteSession(e, session.id)}
-            disabled={deletingId === session.id}
-            class="opacity-0 group-hover:opacity-100 p-0.5 w-auto h-auto rounded transition-opacity"
-          >
-            <Trash2Icon size={13} />
-          </Button>
+          {#if confirmDeleteId === session.id}
+            <button
+              onclick={(e) => deleteSession(e, session.id)}
+              class="text-[10px] text-danger font-medium px-1.5 py-0.5 rounded bg-danger/10 hover:bg-danger/20 transition-colors shrink-0"
+            >
+              Sure?
+            </button>
+          {:else}
+            <Button
+              variant="danger"
+              onclick={(e) => deleteSession(e, session.id)}
+              disabled={deletingId === session.id}
+              class="opacity-0 group-hover:opacity-100 p-0.5 w-auto h-auto rounded transition-opacity"
+              aria-label="Delete chat"
+            >
+              {#if deletingId === session.id}
+                <LoaderIcon size={13} class="animate-spin" />
+              {:else}
+                <Trash2Icon size={13} />
+              {/if}
+            </Button>
+          {/if}
         </div>
       </a>
     {/each}

@@ -70,7 +70,7 @@
     }
     await tick();
     scrollToBottom(true);
-    connectSSE(id);
+    await connectSSE(id);
 
     // Handle starter prompt from query param
     const starter = page.url.searchParams.get('starter');
@@ -82,9 +82,15 @@
     }
   }
 
-  function connectSSE(id: string) {
+  function connectSSE(id: string): Promise<void> {
     const url = messagesApi.streamUrl(id);
     eventSource = new EventSource(url, { withCredentials: true });
+
+    // Resolve once the connection is open (or immediately on error so callers aren't stuck)
+    const ready = new Promise<void>((resolve) => {
+      eventSource!.addEventListener('open', () => resolve(), { once: true });
+      eventSource!.addEventListener('error', () => resolve(), { once: true });
+    });
 
     eventSource.addEventListener('delta', (e) => {
       const data = JSON.parse(e.data);
@@ -160,8 +166,12 @@
       if (isFirstFrame) scrollToBottom(true);
     });
 
-    eventSource.addEventListener('error_event', () => {
+    eventSource.addEventListener('error_event', (e) => {
       streaming = false;
+      try {
+        const data = JSON.parse(e.data);
+        if (data.error) error = `Agent error: ${data.error}`;
+      } catch { /* ignore parse errors */ }
     });
 
     eventSource.onerror = () => {
@@ -170,6 +180,8 @@
         error = 'Connection lost. Refresh to reconnect.';
       }
     };
+
+    return ready;
   }
 
   function closeSSE() {
@@ -259,8 +271,11 @@
 
 <div class="flex flex-col h-full">
   <!-- Tab bar -->
-  <div class="flex items-center gap-1 px-4 pt-2 pb-0 border-b border-border shrink-0">
+  <div class="flex items-center gap-1 px-4 pt-2 pb-0 border-b border-border shrink-0" role="tablist" aria-label="Chat views">
     <button
+      role="tab"
+      aria-selected={activeTab === 'chat'}
+      aria-controls="panel-chat"
       onclick={() => activeTab = 'chat'}
       class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors
         {activeTab === 'chat'
@@ -270,6 +285,9 @@
       Chat
     </button>
     <button
+      role="tab"
+      aria-selected={activeTab === 'browser'}
+      aria-controls="panel-browser"
       onclick={() => activeTab = 'browser'}
       class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
         {activeTab === 'browser'
@@ -278,7 +296,7 @@
     >
       Browser
       {#if liveAgentCount > 0}
-        <span class="flex items-center gap-1">
+        <span class="flex items-center gap-1" aria-label="{liveAgentCount} agents live">
           <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span>
           <span class="text-[10px] text-violet-400">{liveAgentCount}</span>
         </span>
@@ -290,11 +308,11 @@
 
   <!-- Chat tab -->
   {#if activeTab === 'chat'}
-    <div bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
+    <div id="panel-chat" role="tabpanel" bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
       <div class="max-w-3xl mx-auto">
         {#if loading}
-          <div class="flex justify-center py-12">
-            <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <div class="flex justify-center py-12" role="status" aria-label="Loading messages">
+            <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
           </div>
         {:else if error}
           <div class="text-center py-12">
@@ -326,11 +344,16 @@
 
   <!-- Browser tab -->
   {:else}
-    <div class="flex-1 overflow-y-auto p-4">
+    <div id="panel-browser" role="tabpanel" class="flex-1 overflow-y-auto p-4">
       {#if Object.keys(agentFrames).length === 0}
         <div class="flex flex-col items-center justify-center h-full text-center gap-3">
           <p class="text-text-faint text-sm">No browser agents active</p>
-          <p class="text-text-faint text-xs">Switch to Chat and send a task that requires web browsing</p>
+          <button
+            onclick={() => activeTab = 'chat'}
+            class="text-xs text-accent hover:underline"
+          >
+            ← Go to Chat and send a task that requires web browsing
+          </button>
         </div>
       {:else}
         <AgentTiles frames={agentFrames} fullscreen />

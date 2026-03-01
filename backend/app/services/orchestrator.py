@@ -70,12 +70,12 @@ async def _run_with_sdk(
     _old_claudecode = os.environ.pop("CLAUDECODE", None)
     logger.info("_run_with_sdk: CLAUDECODE was %s", "set" if _old_claudecode else "unset")
 
-    BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a visible browser.
+    BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
-Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --visible --session-id {session_id_str}
+Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
 
 The script is at ../scripts/browser_agent.py relative to the backend/ working directory.
-The browser opens visibly so the user can watch. You can:
+The browser runs headlessly and streams screenshots back to the user in real time. You can:
 - Navigate to any URL and extract text, tables, prices, listings
 - Click buttons, links, and UI elements
 - Fill and submit forms (search, contact, checkout, signup)

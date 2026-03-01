@@ -68,7 +68,7 @@ async def update_session(
     data: SessionUpdate,
     session: Annotated[Session, Depends(get_owned_session)],
 ):
-    session.title = data.title
+    session.title = data.title  # already stripped by validator
     return session
 
 
