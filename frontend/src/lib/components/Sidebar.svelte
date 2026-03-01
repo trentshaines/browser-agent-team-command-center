@@ -8,10 +8,17 @@
   import { cn } from '$lib/utils';
 
   let deletingId = $state<string | null>(null);
+  let creating = $state(false);
 
   async function newChat() {
-    const s = await sessionsStore.create();
-    goto(`/chat/${s.id}`);
+    if (creating) return;
+    creating = true;
+    try {
+      const s = await sessionsStore.create();
+      goto(`/chat/${s.id}`);
+    } finally {
+      creating = false;
+    }
   }
 
   async function deleteSession(e: MouseEvent, id: string) {
@@ -44,6 +51,7 @@
   <div class="px-3 pt-3 pb-2">
     <Button
       onclick={newChat}
+      disabled={creating}
       class="w-full px-3 py-2"
     >
       <PlusIcon size={15} />
