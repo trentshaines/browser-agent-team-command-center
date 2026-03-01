@@ -230,48 +230,102 @@
     });
   }
 
+  let activeTab = $state<'chat' | 'browser'>('chat');
+
+  const liveAgentCount = $derived(
+    Object.values(agentFrames).filter(f => !f.done).length
+  );
+
+  // Switch to browser tab automatically when first frame arrives
+  $effect(() => {
+    if (liveAgentCount > 0 && activeTab === 'chat') {
+      activeTab = 'browser';
+    }
+  });
+
   onDestroy(() => {
     closeSSE();
   });
 </script>
 
 <div class="flex flex-col h-full">
-  <!-- Messages area -->
-  <div bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
-    <div class="max-w-3xl mx-auto">
-      {#if loading}
-        <div class="flex justify-center py-12">
-          <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      {:else if error}
-        <div class="text-center py-12">
-          <p class="text-danger text-sm">{error}</p>
-        </div>
-      {:else if messageList.length === 0}
-        <div class="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <p class="text-text-faint text-sm">Send a message to start the conversation</p>
-        </div>
-      {:else}
-        {#each messageList as message (message.id)}
-          <MessageBubble
-            {message}
-            thinking={thinkingMap.get(message.id) ?? ''}
-            thinkingDone={thinkingDoneSet.has(message.id)}
-          />
-        {/each}
-        <AgentRunPanel runs={agentRuns} />
+  <!-- Tab bar -->
+  <div class="flex items-center gap-1 px-4 pt-2 pb-0 border-b border-border shrink-0">
+    <button
+      onclick={() => activeTab = 'chat'}
+      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors
+        {activeTab === 'chat'
+          ? 'text-text border-b-2 border-accent -mb-px'
+          : 'text-text-faint hover:text-text'}"
+    >
+      Chat
+    </button>
+    <button
+      onclick={() => activeTab = 'browser'}
+      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
+        {activeTab === 'browser'
+          ? 'text-text border-b-2 border-accent -mb-px'
+          : 'text-text-faint hover:text-text'}"
+    >
+      Browser
+      {#if liveAgentCount > 0}
+        <span class="flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span>
+          <span class="text-[10px] text-violet-400">{liveAgentCount}</span>
+        </span>
+      {:else if Object.keys(agentFrames).length > 0}
+        <span class="text-[10px] text-text-faint">{Object.keys(agentFrames).length}</span>
       {/if}
-    </div>
+    </button>
   </div>
 
-  <!-- Agent screenshot tiles -->
-  <AgentTiles frames={agentFrames} />
+  <!-- Chat tab -->
+  {#if activeTab === 'chat'}
+    <div bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
+      <div class="max-w-3xl mx-auto">
+        {#if loading}
+          <div class="flex justify-center py-12">
+            <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        {:else if error}
+          <div class="text-center py-12">
+            <p class="text-danger text-sm">{error}</p>
+          </div>
+        {:else if messageList.length === 0}
+          <div class="flex flex-col items-center justify-center py-16 text-center gap-3">
+            <p class="text-text-faint text-sm">Send a message to start the conversation</p>
+          </div>
+        {:else}
+          {#each messageList as message (message.id)}
+            <MessageBubble
+              {message}
+              thinking={thinkingMap.get(message.id) ?? ''}
+              thinkingDone={thinkingDoneSet.has(message.id)}
+            />
+          {/each}
+          <AgentRunPanel runs={agentRuns} />
+        {/if}
+      </div>
+    </div>
 
-  <!-- Input -->
-  <ChatInput
-    onsubmit={sendMessage}
-    disabled={loading}
-    {streaming}
-    onstop={() => { streaming = false; }}
-  />
+    <ChatInput
+      onsubmit={sendMessage}
+      disabled={loading}
+      {streaming}
+      onstop={() => { streaming = false; }}
+    />
+
+  <!-- Browser tab -->
+  {:else}
+    <div class="flex-1 overflow-y-auto p-4">
+      {#if Object.keys(agentFrames).length === 0}
+        <div class="flex flex-col items-center justify-center h-full text-center gap-3">
+          <p class="text-text-faint text-sm">No browser agents active</p>
+          <p class="text-text-faint text-xs">Switch to Chat and send a task that requires web browsing</p>
+        </div>
+      {:else}
+        <AgentTiles frames={agentFrames} fullscreen />
+      {/if}
+    </div>
+  {/if}
 </div>
