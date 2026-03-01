@@ -245,8 +245,9 @@
     }
     streaming = true;
     error = null;
-    agentRuns = [];
-    agentFrames = {};
+    // Keep agentRuns and agentFrames alive — browser agents from the previous
+    // turn continue running and posting frames even after the orchestrator is
+    // interrupted. Clearing here would wipe their tiles from the UI.
     thinkingMap = new Map();
     thinkingDoneSet = new Set();
     autoScroll = true;

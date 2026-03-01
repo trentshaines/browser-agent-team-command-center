@@ -192,8 +192,7 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             except Exception:
                 pass
 
-        _emit({
-            "type": "browser_step",
+        step_data = {
             "step": step_num,
             "url": url,
             "action_type": action_type,
@@ -207,7 +206,10 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             "step_start_time": step_start_time,
             "step_end_time": step_end_time,
             "duration_seconds": duration_seconds,
-        })
+        }
+        _emit({"type": "browser_step", **step_data})
+        if session_id:
+            await _post_event(session_id, {"type": "agent_log", "agent_id": agent_id, **step_data})
 
     stop_event = asyncio.Event()
     if session_id:

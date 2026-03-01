@@ -1,9 +1,10 @@
+import asyncio
 import logging
 import uuid
 from typing import Annotated
 
 import sentry_sdk
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -22,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Tracks the running orchestrator task per session so a new message can cancel the old one.
+# Browser agents spawned by the previous turn are NOT killed — they run independently
+# via their own subprocess and continue posting frames until they finish.
+_active_tasks: dict[str, asyncio.Task] = {}
+
 
 @router.get("/{session_id}/messages", response_model=list[MessageRead])
 async def list_messages(
@@ -39,7 +45,6 @@ async def list_messages(
 async def send_message(
     session_id: uuid.UUID,
     data: MessageCreate,
-    background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_owned_session)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
@@ -80,10 +85,20 @@ async def send_message(
     ]
     history.append({"role": "user", "content": data.content})
 
-    logger.info("Registering orchestrator background task for session %s, message %s", session_id, assistant_msg_id)
+    session_id_str = str(session_id)
+
+    # Cancel any running orchestrator for this session. Browser agents spawned by
+    # the previous turn are NOT killed — they run in independent subprocesses and
+    # continue posting frames until they finish naturally.
+    old_task = _active_tasks.pop(session_id_str, None)
+    if old_task and not old_task.done():
+        old_task.cancel()
+        logger.info("Cancelled previous orchestrator task for session %s", session_id_str)
+
+    logger.info("Creating orchestrator task for session %s, message %s", session_id, assistant_msg_id)
 
     async def run_orchestrator():
-        logger.info("Background orchestrator started for session %s, message %s", session_id, assistant_msg_id)
+        logger.info("Orchestrator task started for session %s, message %s", session_id, assistant_msg_id)
         async with AsyncSessionLocal() as bg_db:
             try:
                 await run_turn(
@@ -93,6 +108,11 @@ async def send_message(
                     db=bg_db,
                 )
                 await bg_db.commit()
+            except asyncio.CancelledError:
+                # New message arrived — silently exit. Partial response was already
+                # streamed via SSE deltas and saved inside _run_with_sdk.
+                logger.info("Orchestrator task cancelled for session %s", session_id)
+                raise
             except Exception as exc:
                 sentry_sdk.capture_exception(exc)
                 logger.exception("Orchestrator failed for session %s", session_id)
@@ -109,12 +129,15 @@ async def send_message(
                 except Exception:
                     logger.exception("Failed to persist error message")
                     await bg_db.rollback()
-                await sse.publish(str(session_id), "error_event", {
+                await sse.publish(session_id_str, "error_event", {
                     "message_id": str(assistant_msg_id),
                     "error": str(exc),
                 })
 
-    background_tasks.add_task(run_orchestrator)
+    task = asyncio.create_task(run_orchestrator())
+    _active_tasks[session_id_str] = task
+    # Auto-remove from dict when the task finishes (success, error, or cancel)
+    task.add_done_callback(lambda _: _active_tasks.pop(session_id_str, None))
 
     return assistant_msg
 

@@ -271,6 +271,25 @@ Return the JSON result from the script exactly as-is."""
                     full_response = event.result
 
         await _save_and_complete(session_id_str, message_id, full_response, db)
+    except asyncio.CancelledError:
+        # A new message arrived and cancelled this task. Save whatever partial
+        # response we've accumulated so it persists on reload. Do NOT publish a
+        # "done" SSE event — the frontend already ignored this message via
+        # cancelledMessageId and is waiting for the new turn's events.
+        logger.info(
+            "Orchestrator cancelled for session %s (partial_len=%d)",
+            session_id_str, len(full_response),
+        )
+        if full_response:
+            try:
+                result = await db.execute(select(Message).where(Message.id == message_id))
+                msg = result.scalar_one_or_none()
+                if msg:
+                    msg.content = full_response
+                await db.flush()
+            except Exception:
+                logger.warning("Failed to save partial response on cancel", exc_info=True)
+        raise
     except TimeoutError as exc:
         sentry_sdk.capture_exception(exc)
         logger.error("Orchestrator timed out (300s) for session %s", session_id_str)
