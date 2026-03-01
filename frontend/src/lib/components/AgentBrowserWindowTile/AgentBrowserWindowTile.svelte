@@ -202,75 +202,86 @@
   <!-- Backdrop -->
   <div
     transition:fade={{ duration: 280 }}
-    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+    class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm"
     role="presentation"
     onclick={closeExpand}
   >
-    <!-- Modal: 70% browser | 30% chat -->
+    <!-- Glass outer frame (scales in/out) -->
     <div
       in:scale={{ start: 0.93, duration: 420, easing: quintOut }}
       out:scale={{ start: 0.93, duration: 220 }}
-      class="relative flex w-[90vw] h-[85vh] rounded-2xl overflow-hidden shadow-2xl"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Expanded browser view"
-      tabindex="-1"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => { if (e.key === 'Escape') closeExpand(); }}
+      class="relative"
     >
-      <!-- Left: Browser screenshot (70%) -->
-      <div class="relative flex-[7] bg-black min-w-0 flex items-center justify-center">
-        <img
-          {src}
-          {alt}
-          class="size-full object-contain"
-          draggable="false"
-        />
-        <!-- Agent info overlay at bottom -->
-        <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between">
-          <span class="text-white/90 text-sm font-medium">{agentName}</span>
-          <span class="text-white/60 text-xs">{status}</span>
-        </div>
-        <!-- Close button -->
-        <button
-          type="button"
-          class="absolute top-3 right-3 p-1.5 rounded-lg bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
-          aria-label="Close expanded view"
-          onclick={closeExpand}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-          </svg>
-        </button>
-      </div>
+      <!-- Glass halo — sits behind the modal, adds the frosted outer ring -->
+      <div
+        class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.20),0_8px_24px_rgba(0,0,0,0.10),inset_0_1px_0_rgba(255,255,255,0.6)]"
+        aria-hidden="true"
+      ></div>
 
-      <!-- Right: Chat stream (30%) -->
-      <div class="flex-[3] flex flex-col bg-gray-950 border-l border-white/10 min-w-0">
-        <!-- Header -->
-        <div class="shrink-0 px-4 py-3 border-b border-white/10 flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="text-white/40" aria-hidden="true">
-            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-          </svg>
-          <span class="text-white/50 text-xs font-medium uppercase tracking-widest">Chat</span>
+      <!-- Modal: 70% browser | 30% chat -->
+      <div
+        class="relative flex w-[90vw] h-[85vh] rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.12)]"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Expanded browser view"
+        tabindex="-1"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => { if (e.key === 'Escape') closeExpand(); }}
+      >
+        <!-- Left: Browser screenshot (70%) — stays dark since it's a webpage screenshot -->
+        <div class="relative flex-[7] bg-black min-w-0 flex items-center justify-center">
+          <img
+            {src}
+            {alt}
+            class="size-full object-contain"
+            draggable="false"
+          />
+          <!-- Agent info overlay at bottom -->
+          <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between">
+            <span class="text-white/90 text-sm font-medium">{agentName}</span>
+            <span class="text-white/60 text-xs">{status}</span>
+          </div>
+          <!-- Close button -->
+          <button
+            type="button"
+            class="absolute top-3 right-3 p-1.5 rounded-lg bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
+            aria-label="Close expanded view"
+            onclick={closeExpand}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
         </div>
 
-        <!-- Messages -->
-        <div
-          bind:this={chatScrollEl}
-          class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4 scroll-smooth"
-        >
-          {#if messages.length === 0}
-            <p class="text-white/25 text-xs text-center mt-10 select-none">No chat messages</p>
-          {:else}
-            {#each messages as msg (msg.id)}
-              <div class="flex flex-col gap-1">
-                <span class="text-[11px] font-medium {msg.role === 'user' ? 'text-white/50' : 'text-violet-400/80'}">
-                  {msg.role === 'user' ? 'You' : agentName}
-                </span>
-                <p class="text-sm text-white/80 leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-              </div>
-            {/each}
-          {/if}
+        <!-- Right: Chat stream (30%) — light theme matching the app -->
+        <div class="flex-[3] flex flex-col bg-white dark:bg-surface border-l border-border min-w-0">
+          <!-- Header -->
+          <div class="shrink-0 px-4 py-3 border-b border-border flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" class="text-(--text-muted)" aria-hidden="true">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+            </svg>
+            <span class="text-(--text-muted) text-xs font-medium uppercase tracking-widest">Chat</span>
+          </div>
+
+          <!-- Messages -->
+          <div
+            bind:this={chatScrollEl}
+            class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-4"
+          >
+            {#if messages.length === 0}
+              <p class="text-(--text-faint) text-xs text-center mt-10 select-none">No chat messages</p>
+            {:else}
+              {#each messages as msg (msg.id)}
+                <div class="flex flex-col gap-1">
+                  <span class="text-[11px] font-medium {msg.role === 'user' ? 'text-(--text-muted)' : 'text-accent'}">
+                    {msg.role === 'user' ? 'You' : agentName}
+                  </span>
+                  <p class="text-sm text-(--text) leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                </div>
+              {/each}
+            {/if}
+          </div>
         </div>
       </div>
     </div>
