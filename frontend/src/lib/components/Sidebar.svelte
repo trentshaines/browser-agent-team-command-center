@@ -3,24 +3,14 @@
   import { page } from '$app/state';
   import { authStore } from '$lib/stores/auth';
   import { sessionsStore, sessionsLoading } from '$lib/stores/sessions';
-  import { PlusIcon, Trash2Icon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
+  import { PlusIcon, Trash2Icon, LogOutIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
+  import CreateProjectModal from '$lib/components/CreateProjectModal.svelte';
   import { cn } from '$lib/utils';
 
   let deletingId = $state<string | null>(null);
-  let creating = $state(false);
   let confirmDeleteId = $state<string | null>(null);
-
-  async function newChat() {
-    if (creating) return;
-    creating = true;
-    try {
-      const s = await sessionsStore.create();
-      goto(`/chat/${s.id}`);
-    } finally {
-      creating = false;
-    }
-  }
+  let createModalOpen = $state(false);
 
   async function deleteSession(e: MouseEvent, id: string) {
     e.preventDefault();
@@ -55,22 +45,19 @@
     <span class="font-semibold text-sm text-text">Windows</span>
   </div>
 
-  <!-- New Chat button -->
+  <!-- New Project button -->
   <div class="px-3 pt-3 pb-2">
     <Button
-      onclick={newChat}
-      disabled={creating}
+      onclick={() => (createModalOpen = true)}
       class="w-full px-3 py-2"
-      aria-label="New chat"
+      aria-label="New project"
     >
-      {#if creating}
-        <LoaderIcon size={15} class="animate-spin" />
-      {:else}
-        <PlusIcon size={15} />
-      {/if}
-      New Chat
+      <PlusIcon size={15} />
+      New Project
     </Button>
   </div>
+
+  <CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} />
 
   <!-- Session list -->
   <nav class="flex-1 overflow-y-auto px-2 pb-2">
