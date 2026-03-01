@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { sessionsStore } from '$lib/stores/sessions';
-  import { BotIcon, ArrowRightIcon } from 'lucide-svelte';
+  import { ArrowRightIcon } from 'lucide-svelte';
 
   const examples = [
     'Compare pricing on Vercel, Netlify, and Railway',
@@ -23,8 +23,8 @@
 
 <div class="flex flex-col items-center justify-center flex-1 px-6 gap-8">
   <div class="flex flex-col items-center gap-3 text-center">
-    <BotIcon size={40} class="text-accent" />
-    <h1 class="text-2xl font-semibold text-text">Browser Agent Command Center</h1>
+    <span class="text-4xl">🪟</span>
+    <h1 class="text-2xl font-semibold text-text">Windows</h1>
     <p class="text-sm text-text-muted max-w-sm">
       Orchestrate a team of browser agents to research, compare, and extract information from the web.
     </p>

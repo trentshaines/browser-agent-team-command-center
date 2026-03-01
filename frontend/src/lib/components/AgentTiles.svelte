@@ -26,7 +26,7 @@
   <div class="{fullscreen ? 'h-full flex flex-col' : 'border-t border-border bg-surface px-4 py-3 shrink-0'}">
     {#if !fullscreen}
       <div class="flex items-center gap-2 mb-2">
-        <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest">Browser Agents</span>
+        <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest">Windows</span>
         <span class="text-[10px] text-text-faint">({agents.length})</span>
       </div>
     {/if}

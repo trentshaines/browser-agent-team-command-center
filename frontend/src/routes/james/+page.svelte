@@ -1,7 +1,6 @@
 <script lang="ts">
   import { page } from "$app/stores";
   import {
-    BotIcon,
     LogInIcon,
     MessageSquareIcon,
     WrenchIcon,
@@ -17,7 +16,7 @@
 </script>
 
 <svelte:head>
-  <title>Browser Agent Command Center — James</title>
+  <title>Windows — James</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background flex flex-col">
@@ -25,8 +24,8 @@
     class="border-b border-border-subtle bg-surface/50 px-6 py-4 flex items-center justify-between"
   >
     <div class="flex items-center gap-2">
-      <BotIcon size={24} class="text-accent" />
-      <span class="font-semibold text-text">Browser Agent Command Center</span>
+      <span class="text-xl">🪟</span>
+      <span class="font-semibold text-text">Windows</span>
     </div>
     <nav class="flex items-center gap-3">
       <a
@@ -50,10 +49,10 @@
     <div class="max-w-xl w-full flex flex-col items-center gap-8 text-center">
       <div class="flex flex-col items-center gap-4">
         <div class="p-4 rounded-2xl bg-surface border border-border-subtle">
-          <BotIcon size={48} class="text-accent" />
+          <span class="text-5xl">🪟</span>
         </div>
         <h1 class="text-3xl font-semibold text-text tracking-tight">
-          Browser Agent Command Center
+          Windows
         </h1>
         <p class="text-text-muted text-lg max-w-md">
           Orchestrate a team of browser agents to research, compare, and extract

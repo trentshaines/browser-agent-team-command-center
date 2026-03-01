@@ -13,7 +13,7 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<title>Browser Agent Command Center</title>
+	<title>Windows</title>
 </svelte:head>
 
 {@render children()}

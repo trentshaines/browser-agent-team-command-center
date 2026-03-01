@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { authStore } from '$lib/stores/auth';
   import { sessionsStore, sessionsLoading } from '$lib/stores/sessions';
-  import { PlusIcon, Trash2Icon, BotIcon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
+  import { PlusIcon, Trash2Icon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
   import { cn } from '$lib/utils';
 
@@ -51,8 +51,8 @@
 <aside class="flex flex-col h-full w-64 shrink-0 bg-surface border-r border-border-subtle">
   <!-- Header -->
   <div class="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
-    <BotIcon size={18} class="text-accent" />
-    <span class="font-semibold text-sm text-text">Browser Agents</span>
+    <span class="text-base">🪟</span>
+    <span class="font-semibold text-sm text-text">Windows</span>
   </div>
 
   <!-- New Chat button -->

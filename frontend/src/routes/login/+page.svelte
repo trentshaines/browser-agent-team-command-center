@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import { authStore } from '$lib/stores/auth';
   import { auth } from '$lib/api';
-  import { BotIcon } from 'lucide-svelte';
 
   onMount(() => {
     const unsub = authStore.subscribe(({ user, loading }) => {
@@ -16,8 +15,8 @@
 <div class="flex items-center justify-center h-screen bg-background">
   <div class="flex flex-col items-center gap-8 max-w-sm w-full px-6">
     <div class="flex items-center gap-3">
-      <BotIcon size={32} class="text-accent" />
-      <h1 class="text-2xl font-semibold text-text">Browser Agents</h1>
+      <span class="text-3xl">🪟</span>
+      <h1 class="text-2xl font-semibold text-text">Windows</h1>
     </div>
 
     <div class="w-full bg-surface border border-border-subtle rounded-2xl p-8 flex flex-col gap-4">
