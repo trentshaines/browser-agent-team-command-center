@@ -30,6 +30,10 @@
   // fetch from a previous session cannot overwrite state for the current one.
   let loadSeq = 0;
 
+  // When the user cancels a streaming response, record the message ID so that
+  // any in-flight delta/done events for it are ignored.
+  let cancelledMessageId = $state<string | null>(null);
+
   // Smart scroll: only snap to bottom if user is already near the bottom
   let autoScroll = true;
   let _scrollRaf: number | null = null;
@@ -57,6 +61,7 @@
     agentRuns = [];
     thinkingMap = new Map();
     thinkingDoneSet = new Set();
+    cancelledMessageId = null;
     closeSSE();
     try {
       const result = await messagesApi.list(id);
@@ -192,6 +197,7 @@
   }
 
   function applyDelta(messageId: string, delta: string) {
+    if (messageId === cancelledMessageId) return; // ignore events for cancelled messages
     const last = messageList[messageList.length - 1];
     if (last?.id === messageId) {
       messageList[messageList.length - 1] = { ...last, content: last.content + delta };
@@ -206,6 +212,7 @@
   }
 
   function finalizeMessage(messageId: string, content: string) {
+    if (messageId === cancelledMessageId) return; // ignore finalization for cancelled messages
     const idx = messageList.findIndex(m => m.id === messageId);
     if (idx >= 0) {
       messageList[idx] = { ...messageList[idx], content };
@@ -222,6 +229,7 @@
     thinkingMap = new Map();
     thinkingDoneSet = new Set();
     autoScroll = true;
+    cancelledMessageId = null; // clear any previous cancellation
 
     try {
       const assistantMsg = await messagesApi.send(sessionId, content);
@@ -257,6 +265,22 @@
     Object.values(agentFrames).filter(f => !f.done).length
   );
 
+  // Global Escape key handler — works regardless of which element has focus
+  $effect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && streaming) {
+        e.preventDefault();
+        const last = messageList[messageList.length - 1];
+        if (last?.role === 'assistant') cancelledMessageId = last.id;
+        streaming = false;
+        const id = sessionId;
+        closeSSE();
+        connectSSE(id);
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  });
 
   onDestroy(() => {
     closeSSE();
@@ -345,7 +369,16 @@
       onsubmit={sendMessage}
       disabled={loading}
       {streaming}
-      onstop={() => { streaming = false; }}
+      onstop={() => {
+        // Record which message is being cancelled so its events are ignored
+        const last = messageList[messageList.length - 1];
+        if (last?.role === 'assistant') cancelledMessageId = last.id;
+        streaming = false;
+        // Close and immediately reconnect SSE so future messages still stream
+        const id = sessionId;
+        closeSSE();
+        connectSSE(id);
+      }}
     />
 
   <!-- Browser tab -->
