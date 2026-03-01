@@ -53,3 +53,8 @@ app.include_router(internal.router, prefix="/internal", tags=["internal"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/sentry-test")
+async def sentry_test():
+    raise RuntimeError("Sentry test error — ignore this")
