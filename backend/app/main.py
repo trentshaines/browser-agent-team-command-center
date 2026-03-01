@@ -24,6 +24,15 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     import os
     s = get_settings()
+
+    # Configure Bedrock environment when llm_provider is set to "bedrock"
+    if s.llm_provider == "bedrock":
+        os.environ["CLAUDE_CODE_USE_BEDROCK"] = "1"
+        os.environ["AWS_REGION"] = s.aws_region
+        # Pin model versions to prevent breakage on new releases
+        os.environ.setdefault("ANTHROPIC_MODEL", s.anthropic_model)
+        os.environ.setdefault("ANTHROPIC_SMALL_FAST_MODEL", s.anthropic_small_fast_model)
+
     if s.aws_bearer_token_bedrock:
         os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", s.aws_bearer_token_bedrock)
     yield
