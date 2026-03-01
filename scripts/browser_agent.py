@@ -13,8 +13,25 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 
+def _is_bedrock_model(model: str) -> bool:
+    """Detect Bedrock model IDs like 'anthropic.claude-*' or 'us.anthropic.claude-*'."""
+    return "anthropic." in model and "/" not in model
+
+
 def create_llm(model: str):
     """Create the right LLM client based on model name and available keys."""
+    # AWS Bedrock (uses browser-use's native Bedrock wrapper)
+    if _is_bedrock_model(model):
+        from browser_use.llm.aws.chat_bedrock import ChatAWSBedrock
+        region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+        # With AWS_BEARER_TOKEN_BEDROCK env var set, boto3 uses bearer token auth
+        # automatically — aws_sso_auth=True lets it use default credential resolution.
+        return ChatAWSBedrock(
+            model=model,
+            aws_region=region,
+            aws_sso_auth=True,
+        )
+
     if "minimax" in model.lower():
         from browser_use.llm.openai.chat import ChatOpenAI
         api_key = os.environ.get("MINIMAX_API_KEY")
