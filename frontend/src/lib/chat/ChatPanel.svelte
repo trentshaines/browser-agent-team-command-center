@@ -72,13 +72,13 @@
   </div>
 
   {#if onSend}
-    <div class="shrink-0 border-t border-border-subtle/50 px-3 py-2">
-      <div class="flex items-center gap-2 rounded-xl bg-surface border border-border-subtle px-3 py-2 focus-within:border-border transition-colors">
+    <div class="shrink-0 border-t border-white/15 px-3 py-2 bg-white/5">
+      <div class="flex items-center gap-2 rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus-within:border-white/40 focus-within:bg-white/15 transition-colors">
         {#if onSpawnAgent}
           <button
             type="button"
             onclick={onSpawnAgent}
-            class="shrink-0 flex items-center gap-1 text-xs text-text-faint hover:text-text transition-colors pr-2 border-r border-border-subtle"
+            class="shrink-0 flex items-center gap-1 text-xs font-medium text-[#2563eb] hover:text-white hover:bg-[#2563eb] rounded-lg px-2 py-1 -ml-1 cursor-pointer transition-all duration-150 mr-2 border-r border-white/20"
             aria-label="Spawn new agent"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

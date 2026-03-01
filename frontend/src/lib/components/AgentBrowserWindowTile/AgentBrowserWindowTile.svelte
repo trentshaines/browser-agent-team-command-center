@@ -37,6 +37,10 @@
     initialLeft = 0,
     /** Initial top offset within the floating canvas. */
     initialTop = 0,
+    /** Live browser session URL for interactive takeover. */
+    liveUrl = null,
+    /** Callback to signal the backend that the human is done with takeover. */
+    onResume = undefined,
   }: {
     src?: string;
     alt?: string;
@@ -50,7 +54,21 @@
     initialWidth?: number | null;
     initialLeft?: number;
     initialTop?: number;
+    liveUrl?: string | null;
+    onResume?: (() => void) | undefined;
   } = $props();
+
+  // Interactive takeover state
+  let isTakeover = $state(false);
+
+  function enterTakeover() {
+    isTakeover = true;
+  }
+
+  function exitTakeover() {
+    isTakeover = false;
+    onResume?.();
+  }
 
   const { aspectRatio, objectFit } = agentBrowserWindowTileConfig;
   const [arW, arH] = aspectRatio.split('/').map(Number);
@@ -204,6 +222,10 @@
   {status}
   {messages}
   {modalOrigin}
+  {liveUrl}
+  {isTakeover}
+  onEnterTakeover={enterTakeover}
+  onExitTakeover={exitTakeover}
   onClose={() => (isOpen = false)}
 />
 
@@ -224,12 +246,12 @@
     )}
   >
     <div
-      class={draggable ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}
+      class={draggable && !isTakeover ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}
       role="presentation"
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={onPointerUp}
+      onpointerdown={isTakeover ? undefined : onPointerDown}
+      onpointermove={isTakeover ? undefined : onPointerMove}
+      onpointerup={isTakeover ? undefined : onPointerUp}
+      onpointercancel={isTakeover ? undefined : onPointerUp}
     >
       <AgentTileStatusBar {status} {agentName} />
     </div>
@@ -254,16 +276,51 @@
       </svg>
     </button>
     <div class="flex-1 min-h-0 p-2">
-      <div class="overflow-hidden size-full rounded-lg">
-        <img
-          {src}
-          {alt}
-          class={cn('size-full pointer-events-none', objectFit, imageClass)}
-          loading="lazy"
-          decoding="async"
-          draggable="false"
-        />
+      <div class="overflow-hidden size-full rounded-lg relative">
+        {#if isTakeover && liveUrl}
+          <iframe
+            src={liveUrl}
+            title="Live browser session"
+            class="size-full border-0"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+          ></iframe>
+        {:else}
+          <img
+            {src}
+            {alt}
+            class={cn('size-full pointer-events-none', objectFit, imageClass)}
+            loading="lazy"
+            decoding="async"
+            draggable="false"
+          />
+        {/if}
       </div>
     </div>
+    <!-- Take Control / Hand Back buttons -->
+    {#if liveUrl}
+      <div class="absolute bottom-2 left-1/2 -translate-x-1/2 z-30">
+        {#if isTakeover}
+          <button
+            type="button"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg transition-all"
+            onclick={(e) => { e.stopPropagation(); exitTakeover(); }}
+            onpointerdown={(e) => e.stopPropagation()}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+            Done — Hand Back
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/90 text-gray-800 hover:bg-white shadow-lg backdrop-blur-sm transition-all"
+            onclick={(e) => { e.stopPropagation(); enterTakeover(); }}
+            onpointerdown={(e) => e.stopPropagation()}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            Take Control
+          </button>
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>

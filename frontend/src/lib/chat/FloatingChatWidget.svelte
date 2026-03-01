@@ -127,12 +127,12 @@
   class="fixed z-50 select-none"
   style="top: {widgetTop}px; left: {widgetLeft}px"
 >
-  <!-- Glass border pane — sits behind the widget, bleeds out on all sides -->
-  <div class="absolute -inset-3 rounded-2xl backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_20px_64px_rgba(0,0,0,0.18)]" />
+  <!-- Glass halo — sits behind the widget, bleeds out on all sides -->
+  <div class="absolute -inset-2 rounded-[1.5rem] backdrop-blur-xl bg-white/30 border border-white/50 shadow-[0_24px_80px_rgba(0,0,0,0.22),0_8px_24px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.55)]" />
 
   <!-- Widget -->
   <div
-    class="relative flex flex-col rounded-xl bg-surface/85 backdrop-blur-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+    class="relative flex flex-col rounded-2xl overflow-hidden bg-surface border border-white/25 shadow-[0_8px_32px_rgba(0,0,0,0.14)]"
     style="width: {widgetW}px; height: {widgetH}px"
   >
     <!-- Invisible top-edge resize handle -->
@@ -145,16 +145,16 @@
 
     <!-- Tabs / drag handle -->
     <header
-      class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5"
+      class="shrink-0 border-b border-white/15 px-3 py-2.5 bg-white/5"
       onpointerdown={onHeaderDown}
     >
       <div class="flex items-center gap-1">
-        <div class="flex flex-1 rounded-lg bg-surface p-0.5 gap-0.5" role="tablist">
+        <div class="flex flex-1 rounded-lg bg-white/10 p-0.5 gap-0.5" role="tablist">
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'chat'}
-            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-white/30 text-text shadow-sm' : 'text-text-muted hover:text-text hover:bg-white/10'}"
             onclick={() => (activeTab = 'chat')}
           >
             Chat
@@ -163,7 +163,7 @@
             type="button"
             role="tab"
             aria-selected={activeTab === 'history'}
-            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-white/30 text-text shadow-sm' : 'text-text-muted hover:text-text hover:bg-white/10'}"
             onclick={() => (activeTab = 'history')}
           >
             Progress
@@ -173,7 +173,7 @@
           <button
             type="button"
             onclick={onStop}
-            class="shrink-0 ml-1 p-1.5 rounded-xl text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            class="shrink-0 ml-1 p-1.5 rounded-xl text-text-muted hover:text-text hover:bg-white/15 transition-colors"
             aria-label="Stop generating"
             title="Stop generating"
           >

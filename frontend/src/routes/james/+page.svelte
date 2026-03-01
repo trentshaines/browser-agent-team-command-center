@@ -4,8 +4,9 @@
   import { FloatingChatWidget } from "$lib/chat";
   import AgentTiles from "$lib/components/AgentTiles.svelte";
   import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
-  import Logo from "$lib/components/Logo.svelte";
-  import { tasks, streamUrl, type AgentPlan } from '$lib/api';
+  import ProjectSwitcher from "$lib/components/ProjectSwitcher.svelte";
+  import { tasks, streamUrl, narrate, type AgentPlan, type Session } from '$lib/api';
+  import { sessionsStore } from '$lib/stores/sessions';
   import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
@@ -14,6 +15,10 @@
   let createModalOpen = $state(false);
   let spawnModalOpen = $state(false);
   let sessionId = $state<string | null>(null);
+
+  // Sessions list (reactive via store subscription)
+  let sessions = $state<Session[]>([]);
+  sessionsStore.subscribe(v => { sessions = v; });
 
   /** Push or remove ?session= in the URL without a full navigation. */
   function syncSessionToUrl(id: string | null) {
@@ -29,6 +34,7 @@
   let cancelledMessageId = $state<string | null>(null);
 
   // Agent state
+  let currentTaskId = $state<string | null>(null);
   let agentRuns = $state<AgentRun[]>([]);
   let agentFrames = $state<Record<string, {
     step: number | null;
@@ -39,42 +45,118 @@
 
   // Map agent_run_id → agent name for chat attribution
   const agentNames = new Map<string, string>();
+  // Map agent_run_id → task description
+  const agentTasks = new Map<string, string>();
 
-  // Map backend LogAction to a short verb phrase for Slack-like chat messages
-  function formatAgentAction(action: string, url: string | null): string {
-    if (!url) {
-      switch (action) {
-        case 'thinking': return 'Thinking…';
-        case 'output': return 'Finished';
-        case 'retry': return 'Retrying…';
-        case 'error': return 'Error encountered';
-        case 'paused': return 'Paused';
-        case 'resumed': return 'Resumed';
-        case 'judge': return 'Evaluating results…';
-        case 'correction': return 'Correcting…';
-        default: return action;
+  // --- Log accumulator + narration timer ---
+  // Logs accumulate silently per-agent. Periodically we ask the LLM to
+  // synthesize them into a conversational message and post that to chat.
+  const agentLogBuffers = new Map<string, string[]>();  // agentId → log lines
+  const narrationCursors = new Map<string, number>();   // agentId → last narrated log index
+  let narrateTimer: ReturnType<typeof setInterval> | null = null;
+  const NARRATE_INTERVAL = 8_000;  // ms between narration sweeps
+  const MIN_NEW_LOGS = 3;          // require this many new logs before narrating
+
+  /** Format a log entry into a short human-readable string for the LLM. */
+  function formatLogLine(action: string, url: string | null): string {
+    const host = url ? (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })() : null;
+    if (host) return `${action} on ${host}`;
+    return action;
+  }
+
+  /** Accumulate a log entry for an agent (no chat message created). */
+  function accumulateLog(agentId: string, action: string, url: string | null) {
+    const line = formatLogLine(action, url);
+    const buf = agentLogBuffers.get(agentId);
+    if (buf) buf.push(line);
+    else agentLogBuffers.set(agentId, [line]);
+  }
+
+  /** Ask /narrate to synthesize an agent's recent logs into a chat message. */
+  async function narrateAgent(agentId: string, opts?: { completed?: boolean; result?: string }) {
+    const logs = agentLogBuffers.get(agentId) ?? [];
+    const cursor = narrationCursors.get(agentId) ?? 0;
+    const newLogs = logs.slice(cursor);
+    if (newLogs.length === 0 && !opts?.completed) return;
+
+    const name = agentNames.get(agentId) ?? 'Agent';
+    const task = agentTasks.get(agentId) ?? '';
+    narrationCursors.set(agentId, logs.length);
+
+    try {
+      const { message } = await narrate.synthesize({
+        agent_name: name,
+        task,
+        logs: newLogs,
+        completed: opts?.completed,
+        result: opts?.result,
+      });
+      messageList = [...messageList, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: message,
+        created_at: new Date().toISOString(),
+        senderName: name,
+        category: opts?.completed ? 'completion' : 'status',
+        agentId,
+      }];
+    } catch {
+      // Fallback: post a raw summary
+      const fallback = opts?.completed
+        ? (opts.result ? `Done — ${opts.result.slice(0, 200)}` : 'Finished')
+        : newLogs[newLogs.length - 1] ?? '';
+      if (fallback) {
+        messageList = [...messageList, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: fallback,
+          created_at: new Date().toISOString(),
+          senderName: name,
+          category: opts?.completed ? 'completion' : 'status',
+          agentId,
+        }];
       }
     }
-    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
-    switch (action) {
-      case 'navigation': return `Navigating to ${host}…`;
-      case 'thinking': return `Thinking about ${host}…`;
-      case 'output': return `Done with ${host}`;
-      case 'handoff': return `Handing off to ${host}…`;
-      default: return `${action} on ${host}`;
+  }
+
+  /** Periodic sweep: narrate any agent that has enough new logs. */
+  async function narrationSweep() {
+    for (const [agentId, logs] of agentLogBuffers) {
+      const cursor = narrationCursors.get(agentId) ?? 0;
+      if (logs.length - cursor >= MIN_NEW_LOGS) {
+        await narrateAgent(agentId);
+      }
     }
+  }
+
+  function startNarrationTimer() {
+    if (narrateTimer) return;
+    narrateTimer = setInterval(narrationSweep, NARRATE_INTERVAL);
+  }
+
+  function stopNarrationTimer() {
+    if (narrateTimer) { clearInterval(narrateTimer); narrateTimer = null; }
+  }
+
+  function resetNarrationState() {
+    stopNarrationTimer();
+    agentLogBuffers.clear();
+    narrationCursors.clear();
   }
 
   let eventSource: EventSource | null = null;
 
   function connectSSE(id: string): Promise<void> {
     const url = streamUrl(id);
-    eventSource = new EventSource(url, { withCredentials: true });
+    eventSource = new EventSource(url);
 
     const ready = new Promise<void>((resolve) => {
-      eventSource!.addEventListener('open', () => resolve(), { once: true });
-      eventSource!.addEventListener('error', () => resolve(), { once: true });
+      eventSource!.addEventListener('open', () => { console.log('[SSE] connected to', url); resolve(); }, { once: true });
+      eventSource!.addEventListener('error', (e) => { console.warn('[SSE] error/reconnect', eventSource?.readyState, e); resolve(); }, { once: true });
     });
+
+    // Debug: log ALL incoming SSE events
+    eventSource.onmessage = (e) => console.log('[SSE] message (unnamed):', e.data?.slice(0, 120));
 
     eventSource.addEventListener('delta', (e) => {
       const data = JSON.parse(e.data);
@@ -108,69 +190,94 @@
 
     eventSource.addEventListener('agent_event', (e) => {
       const data = JSON.parse(e.data);
+      console.log('[SSE] agent_event:', data.type, data);
       if (data.type === 'agent_spawned') {
         if (agentRuns.some(r => r.id === data.agent_id)) return;
         const name = data.name ?? `Browser ${agentRuns.length + 1}`;
         agentNames.set(data.agent_id, name);
+        agentTasks.set(data.agent_id, data.task);
         agentRuns = [...agentRuns, {
           id: data.agent_id,
           name,
           task: data.task,
           status: 'running',
           steps: [],
+          liveUrl: data.live_url ?? null,
         }];
-        // Post spawn as a chat message
+        // Spawn messages go directly to chat (brief, no LLM needed)
         messageList = [...messageList, {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: `Starting: ${data.task}`,
+          content: `On it — ${data.task}`,
           created_at: new Date().toISOString(),
           senderName: name,
+          category: 'spawn',
+          agentId: data.agent_id,
         }];
+        startNarrationTimer();
       } else if (data.type === 'agent_complete') {
         agentRuns = agentRuns.map(r =>
           r.id === data.agent_run_id
             ? { ...r, status: data.result ? 'complete' : 'error', result: data.result, total_steps: data.total_steps }
             : r
         );
-        const name = agentNames.get(data.agent_run_id) ?? 'Agent';
-        messageList = [...messageList, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: data.result ? `Done — ${data.result}` : 'Failed',
-          created_at: new Date().toISOString(),
-          senderName: name,
-        }];
+        // Narrate the completion with full log context + result
+        narrateAgent(data.agent_run_id, {
+          completed: true,
+          result: data.result ?? undefined,
+        });
       }
     });
 
     eventSource.addEventListener('agent_log', (e) => {
       const data = JSON.parse(e.data);
+      console.log('[SSE] agent_log:', data.action, data.url);
       const runIdx = agentRuns.findIndex(r => r.id === data.agent_run_id);
       if (runIdx >= 0) {
         if (agentRuns[runIdx].steps.some(s => s.step === data.step)) return;
         agentRuns[runIdx] = { ...agentRuns[runIdx], steps: [...agentRuns[runIdx].steps, data] };
-        // Post step as a short chat message
-        const name = agentNames.get(data.agent_run_id) ?? 'Agent';
-        messageList = [...messageList, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: formatAgentAction(data.action, data.url),
-          created_at: new Date().toISOString(),
-          senderName: name,
-        }];
+        // Accumulate silently — narration timer will synthesize into chat
+        accumulateLog(data.agent_run_id, data.action, data.url);
       }
+    });
+
+    eventSource.addEventListener('handoff', (e) => {
+      const data = JSON.parse(e.data);
+      console.log('[SSE] handoff:', data.agent_id, data.message);
+      agentRuns = agentRuns.map(r =>
+        r.id === data.agent_id ? { ...r, status: 'paused' as const } : r
+      );
+      // Handoff messages go directly to chat (urgent, user needs to act)
+      const name = agentNames.get(data.agent_id) ?? 'Agent';
+      messageList = [...messageList, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `Needs help: ${data.message}`,
+        created_at: new Date().toISOString(),
+        senderName: name,
+        category: 'status',
+        agentId: data.agent_id,
+      }];
+    });
+
+    eventSource.addEventListener('human_input_received', (e) => {
+      const data = JSON.parse(e.data);
+      console.log('[SSE] human_input_received:', data.agent_id);
+      agentRuns = agentRuns.map(r =>
+        r.id === data.agent_id ? { ...r, status: 'running' as const } : r
+      );
     });
 
     eventSource.addEventListener('agent_frame', (e) => {
       const data = JSON.parse(e.data);
-      if (!agentRuns.some(r => r.id === data.agent_id)) return;
-      agentFrames[data.agent_id] = {
+      console.log('[SSE] agent_frame:', data.agent_id, 'step', data.step, 'screenshot bytes:', data.screenshot?.length);
+      if (!agentRuns.some(r => r.id === data.agent_id)) { console.warn('[SSE] agent_frame dropped — agent not in agentRuns. Have:', agentRuns.map(r => r.id)); return; }
+      agentFrames = { ...agentFrames, [data.agent_id]: {
         step: data.step,
         url: data.url,
         screenshot: data.screenshot,
         done: false,
-      };
+      }};
     });
 
     eventSource.addEventListener('error_event', () => {
@@ -207,11 +314,13 @@
       role: 'user',
       content,
       created_at: new Date().toISOString(),
+      category: 'user',
     };
     messageList = [...messageList, userMsg];
     await tick();
     try {
-      await tasks.spawn(sessionId, content);
+      const resp = await tasks.spawn(sessionId, content);
+      currentTaskId = resp.task_id;
     } catch {
       streaming = false;
     }
@@ -226,6 +335,15 @@
     if (id) connectSSE(id);
   }
 
+  async function handleResumeAgent(agentId: string) {
+    if (!currentTaskId) return;
+    try {
+      await tasks.respond(currentTaskId, agentId, '');
+    } catch (e) {
+      console.error('Failed to resume agent:', e);
+    }
+  }
+
   async function handleSpawn(name: string, task: string) {
     if (!sessionId) return;
     const userMsg: WidgetMessage = {
@@ -233,17 +351,53 @@
       role: 'user',
       content: task,
       created_at: new Date().toISOString(),
+      category: 'user',
     };
     messageList = [...messageList, userMsg];
     try {
-      await tasks.spawn(sessionId, task, [{ name, task }]);
+      const resp = await tasks.spawn(sessionId, task, [{ name, task }]);
+      currentTaskId = resp.task_id;
     } catch (e) {
       console.error('Failed to spawn agent:', e);
     }
   }
 
+  async function switchSession(id: string) {
+    if (id === sessionId) return;
+    // Reset state
+    resetNarrationState();
+    messageList = [];
+    agentRuns = [];
+    agentFrames = {};
+    streaming = false;
+    cancelledMessageId = null;
+    currentTaskId = null;
+    closeSSE();
+    sessionId = id;
+    syncSessionToUrl(id);
+    sessionsStore.bumpUpdated(id);
+    await connectSSE(id);
+  }
+
+  function deleteSession(id: string) {
+    sessionsStore.delete(id);
+    if (id === sessionId) {
+      resetNarrationState();
+      closeSSE();
+      sessionId = null;
+      currentTaskId = null;
+      messageList = [];
+      agentRuns = [];
+      agentFrames = {};
+      streaming = false;
+      cancelledMessageId = null;
+      syncSessionToUrl(null);
+    }
+  }
+
   async function onProjectLaunched(id: string, goal: string, agents: AgentPlan[]) {
     // Reset state for new session
+    resetNarrationState();
     sessionId = id;
     syncSessionToUrl(id);
     createModalOpen = false;
@@ -252,8 +406,10 @@
     agentFrames = {};
     streaming = false;
     cancelledMessageId = null;
+    currentTaskId = null;
     closeSSE();
     await connectSSE(id);
+    sessionsStore.bumpUpdated(id);
 
     // Use direct task spawning with the confirmed agent team
     const userMsg: WidgetMessage = {
@@ -261,19 +417,22 @@
       role: 'user',
       content: goal,
       created_at: new Date().toISOString(),
+      category: 'user',
     };
     messageList = [...messageList, userMsg];
     await tick();
     try {
       streaming = true;
-      await tasks.spawn(id, goal, agents);
+      const resp = await tasks.spawn(id, goal, agents);
+      currentTaskId = resp.task_id;
     } catch {
       streaming = false;
     }
   }
 
-  // On mount, restore session from URL query param and reconnect SSE.
+  // On mount, load sessions and restore session from URL query param.
   onMount(() => {
+    sessionsStore.load();
     const params = new URLSearchParams(window.location.search);
     const restored = params.get('session');
     if (restored) {
@@ -283,6 +442,7 @@
   });
 
   onDestroy(() => {
+    resetNarrationState();
     closeSSE();
   });
 </script>
@@ -300,10 +460,12 @@
     <div class="gradient-orb orb-4"></div>
   </div>
   <header class="relative z-10 flex items-center justify-between border-b border-white/15 backdrop-blur-xl px-6 py-3">
-    <div class="flex items-center gap-2.5">
-      <Logo size={18} />
-      <span class="text-sm font-semibold text-text">James</span>
-    </div>
+    <ProjectSwitcher
+      {sessions}
+      currentSessionId={sessionId}
+      onSwitch={switchSession}
+      onDelete={deleteSession}
+    />
     <button
       onclick={() => (createModalOpen = true)}
       class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] transition-all"
@@ -314,15 +476,8 @@
   </header>
 
   <main class="flex-1 relative z-10 overflow-hidden">
-    {#if Object.keys(agentFrames).length > 0}
-      <AgentTiles frames={agentFrames} fullscreen messages={messageList} />
-    {:else if agentRuns.some(r => r.status === 'running')}
-      <div class="flex items-center justify-center h-full gap-3">
-        <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-        <span class="text-sm text-text-muted">
-          {agentRuns.filter(r => r.status === 'running').length} agent{agentRuns.filter(r => r.status === 'running').length !== 1 ? 's' : ''} starting…
-        </span>
-      </div>
+    {#if agentRuns.length > 0}
+      <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onResumeAgent={handleResumeAgent} />
     {:else if sessionId}
       <div class="flex items-center justify-center h-full">
         <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>

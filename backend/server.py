@@ -15,12 +15,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.agent import BrowserAgent, Orchestrator, task_refiner, summarize_results
+from backend.agent import BrowserAgent, Orchestrator, task_refiner, summarize_results, _bedrock_call_haiku
 
 app = FastAPI(title="Browser Agent API")
 
@@ -124,6 +124,8 @@ def _make_event_callback(task_id: str):
             }
         elif event_type == "agent_frame":
             event = {"event": "agent_frame", **data}
+        elif event_type in ("handoff", "human_input_received"):
+            event = {"event": event_type, **data}
         elif event_type == "done":
             event = {"event": "done", **data}
         else:
@@ -273,6 +275,8 @@ def _make_session_callback(session_id: str):
             }
         elif event_type == "agent_frame":
             event = {"event": "agent_frame", **data}
+        elif event_type in ("handoff", "human_input_received"):
+            event = {"event": event_type, **data}
         elif event_type == "done":
             event = {"event": "done", **data}
         else:
@@ -355,6 +359,91 @@ async def stream_session(session_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class NarrateRequest(BaseModel):
+    agent_name: str
+    task: str
+    logs: list[str]
+    completed: bool = False
+    result: str | None = None
+
+
+class NarrateResponse(BaseModel):
+    message: str
+
+
+@app.post("/narrate", response_model=NarrateResponse)
+async def narrate_agent(req: NarrateRequest):
+    """Synthesize agent logs into a conversational chat message using Haiku."""
+    logs_text = "\n".join(f"- {log}" for log in req.logs) if req.logs else "(no recent activity)"
+
+    if req.completed:
+        user_message = (
+            f"AGENT: {req.agent_name}\n"
+            f"TASK: {req.task}\n"
+            f"STATUS: Completed\n"
+            f"RECENT ACTIVITY:\n{logs_text}\n"
+            f"RESULT: {req.result or '(no result)'}"
+        )
+    else:
+        user_message = (
+            f"AGENT: {req.agent_name}\n"
+            f"TASK: {req.task}\n"
+            f"STATUS: In progress\n"
+            f"RECENT ACTIVITY:\n{logs_text}"
+        )
+
+    try:
+        raw = _bedrock_call_haiku(
+            system_prompt=(
+                "You are a team member giving a brief status update in a Slack channel. "
+                "Given an agent's recent activity logs, write a casual 1-2 sentence update "
+                "as if YOU are the one doing the work. Use first person. Be concise and natural. "
+                "Don't say 'I navigated to' for every page — summarize what you're actually doing. "
+                "If the task is completed, summarize the key finding or outcome. "
+                "Write ONLY the message, no preamble."
+            ),
+            user_message=user_message,
+            max_tokens=256,
+        )
+        return NarrateResponse(message=raw.strip())
+    except Exception:
+        # Fallback: generate a simple message without LLM
+        if req.completed:
+            fallback = req.result[:200] if req.result else "Done"
+            return NarrateResponse(message=f"Finished up — {fallback}")
+        last_log = req.logs[-1] if req.logs else "working on it"
+        return NarrateResponse(message=f"Still at it — {last_log}")
+
+
+@app.post("/task/{task_id}/respond/{agent_id}")
+async def respond(
+    task_id: str,
+    agent_id: str,
+    prompt: str = Form(...),
+    file: UploadFile | None = File(None),
+):
+    """Respond to a paused agent. Empty prompt = unpause and continue.
+
+    Non-empty prompt can be used to give the agent additional instructions.
+    """
+    state = tasks.get(task_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    target = None
+    for agent in state.agents:
+        if agent.task_id == agent_id:
+            target = agent
+            break
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Empty prompt = just unpause (human finished in the browser)
+    target.signal_human_done()
+    return {"ok": True}
 
 
 @app.post("/task/{task_id}/agent/{agent_id}/reprompt")

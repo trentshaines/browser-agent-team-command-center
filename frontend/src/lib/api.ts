@@ -75,6 +75,34 @@ export const tasks = {
       method: 'POST',
       body: JSON.stringify({ prompt, ...(agents ? { agents } : {}) }),
     }),
+  /** Send a response to a paused agent. Empty prompt = unpause. */
+  respond: async (taskId: string, agentId: string, prompt = '') => {
+    const form = new FormData();
+    form.append('prompt', prompt);
+    const res = await fetch(`${BASE}/task/${taskId}/respond/${agentId}`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!res.ok) throw new ApiError(res.status, await res.text());
+    return res.json() as Promise<{ ok: boolean }>;
+  },
+};
+
+// Narrate — synthesize agent logs into a conversational chat message
+export interface NarrateRequest {
+  agent_name: string;
+  task: string;
+  logs: string[];
+  completed?: boolean;
+  result?: string;
+}
+
+export const narrate = {
+  synthesize: (req: NarrateRequest) =>
+    request<{ message: string }>('/narrate', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
 };
 
 // SSE stream URL for a session

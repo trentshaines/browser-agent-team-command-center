@@ -14,6 +14,10 @@
     status,
     messages,
     modalOrigin = '50% 50%',
+    liveUrl = null,
+    isTakeover = false,
+    onEnterTakeover,
+    onExitTakeover,
     onClose,
   }: {
     isOpen: boolean;
@@ -23,6 +27,10 @@
     status: string;
     messages: Message[];
     modalOrigin?: string;
+    liveUrl?: string | null;
+    isTakeover?: boolean;
+    onEnterTakeover?: () => void;
+    onExitTakeover?: () => void;
     onClose: () => void;
   } = $props();
 
@@ -82,14 +90,46 @@
         onclick={(e) => e.stopPropagation()}
         onkeydown={(e) => { if (e.key === 'Escape') onClose(); }}
       >
-        <!-- Left: Browser screenshot -->
+        <!-- Left: Browser view (screenshot or live iframe) -->
         <div class="relative flex-[7] min-w-0">
-          <img {src} {alt} class="size-full object-cover" draggable="false" />
+          {#if isTakeover && liveUrl}
+            <iframe
+              src={liveUrl}
+              title="Live browser session"
+              class="size-full border-0"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            ></iframe>
+          {:else}
+            <img {src} {alt} class="size-full object-cover" draggable="false" />
+          {/if}
 
-          <!-- Agent info overlay -->
+          <!-- Agent info overlay + takeover controls -->
           <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between">
-            <span class="text-white/90 text-sm font-medium">{agentName}</span>
-            <span class="text-white/60 text-xs">{status}</span>
+            <div class="flex items-center gap-3">
+              <span class="text-white/90 text-sm font-medium">{agentName}</span>
+              <span class="text-white/60 text-xs">{status}</span>
+            </div>
+            {#if liveUrl}
+              {#if isTakeover}
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition-all"
+                  onclick={() => onExitTakeover?.()}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                  Done — Hand Back
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/90 text-gray-800 hover:bg-white transition-all"
+                  onclick={() => onEnterTakeover?.()}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                  Take Control
+                </button>
+              {/if}
+            {/if}
           </div>
 
         </div>

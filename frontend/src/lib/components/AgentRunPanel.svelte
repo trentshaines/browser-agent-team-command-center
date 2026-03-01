@@ -14,10 +14,11 @@
     id: string;
     name?: string;
     task: string;
-    status: 'running' | 'complete' | 'error';
+    status: 'running' | 'complete' | 'error' | 'paused';
     steps: AgentStep[];
     result?: string | null;
     total_steps?: number;
+    liveUrl?: string | null;
   }
 
   let { runs }: { runs: AgentRun[] } = $props();
