@@ -86,10 +86,6 @@ async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None
     })
 
 
-async def _post_event(session_id: str, payload: dict) -> None:
-    await _post_internal("/internal/agent-event", {"session_id": session_id, **payload})
-
-
 async def _stream_frames(agent, session_id: str, agent_id: str, stop_event: asyncio.Event) -> None:
     """Continuously capture and stream screenshots until stop_event is set (~0.67 fps)."""
     step = 0
@@ -123,9 +119,6 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
         profile_kwargs["user_data_dir"] = Path(tempfile.mkdtemp(prefix="bu_agent_"))
     browser_profile = BrowserProfile(**profile_kwargs)
     agent = Agent(task=task, llm=llm, browser_profile=browser_profile)
-
-    if session_id:
-        await _post_event(session_id, {"type": "agent_spawned", "agent_id": agent_id, "task": task})
 
     async def on_step_end(agent: "Agent") -> None:
         """Emit a browser_step JSONL record after each step completes."""
@@ -174,23 +167,6 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             except Exception:
                 pass
 
-        # Stream to FastAPI if session_id provided
-        if session_id:
-            await _post_event(session_id, {
-                "type": "agent_log",
-                "agent_id": agent_id,
-                "step": step_num,
-                "url": url,
-                "action_type": action_type,
-                "action_params": action_params,
-                "thought": last.model_output.next_goal if last.model_output else None,
-                "evaluation": last.model_output.evaluation_previous_goal if last.model_output else None,
-                "memory": last.model_output.memory if last.model_output else None,
-                "extracted_content": extracted_content,
-                "success": success,
-                "error": error,
-            })
-
         _emit({
             "type": "browser_step",
             "step": step_num,
@@ -223,22 +199,8 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             "total_steps": len(result),
             "total_duration": result.total_duration_seconds(),
         }
-        if session_id:
-            await _post_event(session_id, {
-                "type": "agent_complete",
-                "agent_id": agent_id,
-                "result": outcome["result"],
-                "total_steps": outcome["total_steps"],
-            })
         return outcome
     except Exception as e:
-        if session_id:
-            await _post_event(session_id, {
-                "type": "agent_complete",
-                "agent_id": agent_id,
-                "result": None,
-                "total_steps": None,
-            })
         return {
             "success": False,
             "task": task,

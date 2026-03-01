@@ -179,12 +179,6 @@ Return the JSON result from the script exactly as-is."""
                                     db.add(agent_run)
                                     await db.flush()
                                     pending_agent_runs[tool_id] = agent_run.id
-                                    await sse.publish(session_id_str, "agent_event", {
-                                        "type": "agent_spawned",
-                                        "agent_id": str(agent_run.id),
-                                        "task": prompt,
-                                        "name": browser_name,
-                                    })
                                     logger.info("Agent spawned: run=%s name=%s task=%s", agent_run.id, browser_name, prompt[:60])
                                 except Exception:
                                     logger.warning("Failed to create AgentRun for Task", exc_info=True)
@@ -220,7 +214,7 @@ Return the JSON result from the script exactly as-is."""
                                             agent_run_id, raw_content[:1000] or "<empty>",
                                         )
 
-                                    # Persist and emit each step
+                                    # Persist steps to DB (SSE events are handled by browser_agent.py in real-time)
                                     for step in steps:
                                         db.add(AgentRunLog(
                                             agent_run_id=agent_run_id,
@@ -238,10 +232,6 @@ Return the JSON result from the script exactly as-is."""
                                             step_end_time=step.get("step_end_time"),
                                             duration_seconds=step.get("duration_seconds"),
                                         ))
-                                        await sse.publish(session_id_str, "agent_log", {
-                                            "agent_run_id": str(agent_run_id),
-                                            **{k: v for k, v in step.items() if k != "type"},
-                                        })
 
                                     result_row = await db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
                                     agent_run = result_row.scalar_one_or_none()
@@ -250,12 +240,6 @@ Return the JSON result from the script exactly as-is."""
                                         agent_run.result = final_result.get("result") if final_result else None
                                         agent_run.completed_at = datetime.now(timezone.utc)
                                     await db.flush()
-                                    await sse.publish(session_id_str, "agent_event", {
-                                        "type": "agent_complete",
-                                        "agent_run_id": str(agent_run_id),
-                                        "result": final_result.get("result") if final_result else None,
-                                        "total_steps": len(steps),
-                                    })
                                     logger.info("Agent complete: run=%s steps=%d", agent_run_id, len(steps))
                                 except Exception:
                                     logger.warning("Failed to update AgentRun on completion", exc_info=True)

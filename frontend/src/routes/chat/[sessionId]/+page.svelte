@@ -249,7 +249,7 @@
     thinkingMap = new Map();
     thinkingDoneSet = new Set();
     autoScroll = true;
-    cancelledMessageId = null; // clear any previous cancellation
+    cancelledMessageId = null;
 
     try {
       const assistantMsg = await messagesApi.send(sessionId, content);
@@ -302,12 +302,6 @@
     return () => document.removeEventListener('keydown', onKeyDown);
   });
 
-  // Auto-switch to Browser tab as soon as an agent is spawned (don't wait for screenshots)
-  $effect(() => {
-    if (agentRuns.some(r => r.status === 'running') && activeTab === 'chat') {
-      activeTab = 'browser';
-    }
-  });
 
   onDestroy(() => {
     closeSSE();
