@@ -87,7 +87,8 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
-    browser_profile = BrowserProfile(headless=headless)
+    use_cloud = os.environ.get("BROWSER_USE_CLOUD", "").lower() in ("1", "true", "yes")
+    browser_profile = BrowserProfile(use_cloud=use_cloud, headless=headless if not use_cloud else True)
     agent = Agent(task=task, llm=llm, browser_profile=browser_profile)
 
     async def on_step_end(agent: "Agent") -> None:
