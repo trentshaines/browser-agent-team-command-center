@@ -95,45 +95,27 @@ async def test_post_frame_logs_network_error(monkeypatch, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Screenshot capture path
+# _stream_frames continuous capture
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_screenshot_uses_browser_session(monkeypatch):
-    """on_step_end calls agent.browser_session.take_screenshot (not agent.browser)."""
-    fake_jpeg = b"\xff\xd8\xff" + b"\x00" * 100  # minimal JPEG-like bytes
+async def test_stream_frames_captures_and_posts(monkeypatch):
+    """_stream_frames calls take_screenshot and posts frames until stop_event is set."""
+    import asyncio
+    fake_jpeg = b"\xff\xd8\xff" + b"\x00" * 100
 
-    # Minimal fake agent history entry
-    fake_result = MagicMock()
-    fake_result.extracted_content = None
-    fake_result.success = True
-    fake_result.error = None
+    stop_event = asyncio.Event()
+    call_count = 0
 
-    fake_metadata = MagicMock()
-    fake_metadata.step_number = 1
-    fake_metadata.step_start_time = 0.0
-    fake_metadata.step_end_time = 1.0
-    fake_metadata.duration_seconds = 1.0
-
-    fake_state = MagicMock()
-    fake_state.url = "https://example.com"
-
-    fake_output = MagicMock()
-    fake_output.action = []
-    fake_output.next_goal = "test goal"
-    fake_output.evaluation_previous_goal = "ok"
-    fake_output.memory = ""
-
-    fake_history_item = MagicMock()
-    fake_history_item.model_output = fake_output
-    fake_history_item.result = [fake_result]
-    fake_history_item.state = fake_state
-    fake_history_item.metadata = fake_metadata
+    async def take_screenshot_once(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        stop_event.set()  # stop after first capture
+        return fake_jpeg
 
     fake_agent = MagicMock()
-    fake_agent.history.history = [fake_history_item]
-    fake_agent.browser_session = AsyncMock()
-    fake_agent.browser_session.take_screenshot = AsyncMock(return_value=fake_jpeg)
+    fake_agent.browser_session = MagicMock()
+    fake_agent.browser_session.take_screenshot = take_screenshot_once
 
     posted_frames = []
 
@@ -141,32 +123,11 @@ async def test_screenshot_uses_browser_session(monkeypatch):
         posted_frames.append({"step": step, "screenshot_b64": screenshot_b64})
 
     monkeypatch.setattr(browser_agent, "_post_frame", mock_post_frame)
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
 
-    # Build and call on_step_end by running run_task partially
-    # We test the internal logic by directly invoking the closure
-    # Easiest: patch run_task to capture the on_step_end closure
-    captured_cb = {}
+    await browser_agent._stream_frames(fake_agent, "sess-1", "agent-1", stop_event)
 
-    original_run = browser_agent.run_task
-
-    async def patched_agent_run(on_step_end=None, **kwargs):
-        captured_cb["fn"] = on_step_end
-        return MagicMock(is_successful=lambda: True, final_result=lambda: "done",
-                         __len__=lambda self: 1, total_duration_seconds=lambda: 1.0)
-
-    with patch("browser_use.Agent") as MockAgent:
-        instance = MockAgent.return_value
-        instance.run = patched_agent_run
-        with patch("browser_agent.create_llm", return_value=MagicMock()):
-            with patch("browser_use.BrowserProfile", return_value=MagicMock()):
-                await browser_agent.run_task("test task", "test-model", True, session_id="sess-abc")
-
-    assert captured_cb.get("fn") is not None, "on_step_end callback was not registered"
-
-    # Now invoke the captured callback with our fake agent
-    await captured_cb["fn"](fake_agent)
-
-    assert fake_agent.browser_session.take_screenshot.called, \
-        "take_screenshot was not called — wrong API used"
+    assert call_count == 1, "take_screenshot should have been called once"
     assert len(posted_frames) == 1
+    assert posted_frames[0]["step"] == 0
     assert posted_frames[0]["screenshot_b64"] == base64.b64encode(fake_jpeg).decode()
