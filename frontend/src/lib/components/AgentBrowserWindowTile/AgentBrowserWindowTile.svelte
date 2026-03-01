@@ -341,7 +341,7 @@
     <!-- Expand button: z-30 sits above all resize handles (z-10) -->
     <button
       type="button"
-      class="absolute top-2 right-2 z-30 p-1.5 rounded-lg text-(--text-muted) hover:text-(--text) hover:bg-black/5 dark:hover:bg-white/5 transition-colors focus:outline-none focus:ring-2 focus:ring-accent/50"
+      class="absolute top-2 right-2 z-30 p-1.5 rounded-lg text-(--text-muted) hover:text-(--text) hover:bg-white/40 dark:hover:bg-white/15 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/50"
       aria-label="Expand"
       onclick={(e) => { e.stopPropagation(); openExpand(); }}
       onpointerdown={(e) => e.stopPropagation()}

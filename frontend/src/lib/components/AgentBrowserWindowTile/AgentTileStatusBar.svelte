@@ -27,7 +27,7 @@
 
 <div
   class={cn(
-    'flex items-center gap-2 px-3 py-3 text-xs font-medium',
+    'flex items-center gap-2 px-3 py-1.5 text-xs font-medium',
     className
   )}
   role="status"
