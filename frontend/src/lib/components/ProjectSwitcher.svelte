@@ -1,7 +1,13 @@
 <script lang="ts">
   import { ChevronDownIcon, XIcon } from 'lucide-svelte';
   import Logo from './Logo.svelte';
-  import type { Session } from '$lib/api';
+
+  interface ConvexSession {
+    _id: string;
+    clientId: string;
+    title: string;
+    updatedAt: number;
+  }
 
   let {
     sessions,
@@ -9,10 +15,10 @@
     onSwitch,
     onDelete,
   }: {
-    sessions: Session[];
+    sessions: ConvexSession[];
     currentSessionId: string | null;
-    onSwitch: (id: string) => void;
-    onDelete: (id: string) => void;
+    onSwitch: (clientId: string) => void;
+    onDelete: (clientId: string) => void;
   } = $props();
 
   let open = $state(false);
@@ -23,18 +29,18 @@
     open = !open;
   }
 
-  function handleSwitch(id: string) {
+  function handleSwitch(clientId: string) {
     open = false;
-    onSwitch(id);
+    onSwitch(clientId);
   }
 
-  function handleDelete(e: MouseEvent, id: string) {
+  function handleDelete(e: MouseEvent, clientId: string) {
     e.stopPropagation();
-    onDelete(id);
+    onDelete(clientId);
   }
 
-  function relativeTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
+  function relativeTime(ts: number): string {
+    const diff = Date.now() - ts;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
@@ -67,7 +73,7 @@
   });
 
   const currentTitle = $derived(
-    sessions.find(s => s.id === currentSessionId)?.title ?? 'James'
+    sessions.find(s => s.clientId === currentSessionId)?.title ?? 'James'
   );
 </script>
 
@@ -100,13 +106,13 @@
             <p class="text-xs text-text-faint">No projects yet</p>
           </div>
         {:else}
-          {#each sessions as session (session.id)}
-            {@const isActive = session.id === currentSessionId}
+          {#each sessions as session (session.clientId)}
+            {@const isActive = session.clientId === currentSessionId}
             <div
               role="button"
               tabindex="0"
-              onclick={() => handleSwitch(session.id)}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(session.id); } }}
+              onclick={() => handleSwitch(session.clientId)}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSwitch(session.clientId); } }}
               class="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left group transition-colors cursor-pointer
                 {isActive ? 'bg-accent/15' : 'hover:bg-white/8'}"
             >
@@ -115,11 +121,11 @@
               ></span>
               <div class="flex-1 min-w-0">
                 <p class="text-xs font-medium text-text truncate">{session.title}</p>
-                <p class="text-[10px] text-text-faint">{relativeTime(session.updated_at)}</p>
+                <p class="text-[10px] text-text-faint">{relativeTime(session.updatedAt)}</p>
               </div>
               {#if !isActive}
                 <button
-                  onclick={(e) => handleDelete(e, session.id)}
+                  onclick={(e) => handleDelete(e, session.clientId)}
                   class="p-1 rounded text-text-faint hover:text-danger opacity-0 group-hover:opacity-100 transition-all shrink-0"
                   aria-label="Delete project"
                 >

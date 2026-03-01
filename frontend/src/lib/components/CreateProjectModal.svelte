@@ -2,8 +2,10 @@
   import { fade, scale, slide } from 'svelte/transition';
   import { quintOut, backOut } from 'svelte/easing';
   import { planning, type AgentPlan } from '$lib/api';
-  import { sessionsStore } from '$lib/stores/sessions';
+  import { useSessionMutations } from '$lib/stores/sessions';
   import { agentColorByIndex } from '$lib/palette';
+
+  const sessionMutations = useSessionMutations();
 
   let {
     isOpen,
@@ -61,11 +63,11 @@
   }
 
   async function launch() {
-    if (agents.length === 0) return;
+    if (agents.length === 0 || !sessionMutations) return;
     launching = true;
     try {
-      const s = sessionsStore.create(title.trim() || 'New Project');
-      onLaunch(s.id, prompt.trim(), agents);
+      const s = await sessionMutations.create(title.trim() || 'New Project');
+      onLaunch(s.clientId, prompt.trim(), agents);
     } finally {
       launching = false;
     }

@@ -17,7 +17,7 @@
   aria-hidden="true"
 >
   <rect x="0"            y="0"            width={half} height={half} rx={r} fill={palette.accent} />
-  <rect x={half + gap}   y="0"            width={half} height={half} rx={r} fill={palette.blue} />
-  <rect x="0"            y={half + gap}   width={half} height={half} rx={r} fill={palette.amber} />
-  <rect x={half + gap}   y={half + gap}   width={half} height={half} rx={r} fill={palette.emerald} />
+  <rect x={half + gap}   y="0"            width={half} height={half} rx={r} fill={palette.cyan} />
+  <rect x="0"            y={half + gap}   width={half} height={half} rx={r} fill={palette.pink} />
+  <rect x={half + gap}   y={half + gap}   width={half} height={half} rx={r} fill={palette.orange} />
 </svg>

@@ -1,73 +1,61 @@
-import { writable } from 'svelte/store';
-import type { Session } from '$lib/api';
-
-export const sessionsLoading = writable(false);
+import { useSafeConvexClient } from '$lib/convex';
+import { api } from '../../convex/_generated/api';
+import type { Id } from '../../convex/_generated/dataModel';
+import type { ConvexClient } from 'convex/browser';
 
 const STORAGE_KEY = 'browser-agent-sessions';
+const MIGRATED_KEY = 'browser-agent-sessions-migrated';
 
-function loadFromStorage(): Session[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveToStorage(sessions: Session[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-}
-
-function createSessionsStore() {
-  const { subscribe, set, update } = writable<Session[]>([]);
+/**
+ * Get Convex session mutation wrappers.
+ * Returns null if Convex isn't configured.
+ */
+export function useSessionMutations() {
+  const client = useSafeConvexClient();
+  if (!client) return null;
 
   return {
-    subscribe,
-    async load() {
-      sessionsLoading.set(true);
-      const data = loadFromStorage();
-      set(data);
-      sessionsLoading.set(false);
+    async create(title: string): Promise<{ _id: Id<"sessions">; clientId: string }> {
+      const clientId = crypto.randomUUID();
+      const _id = await client.mutation(api.sessions.create, { clientId, title });
+      return { _id, clientId };
     },
-    create(title = 'New Chat'): Session {
-      const s: Session = {
-        id: crypto.randomUUID(),
-        title,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      update(list => {
-        const next = [s, ...list];
-        saveToStorage(next);
-        return next;
-      });
-      return s;
+    async remove(id: Id<"sessions">) {
+      await client.mutation(api.sessions.remove, { id });
     },
-    delete(id: string) {
-      update(list => {
-        const next = list.filter(s => s.id !== id);
-        saveToStorage(next);
-        return next;
-      });
+    async updateTitle(id: Id<"sessions">, title: string) {
+      await client.mutation(api.sessions.updateTitle, { id, title });
     },
-    updateTitle(id: string, title: string) {
-      update(list => {
-        const next = list.map(s => s.id === id ? { ...s, title } : s);
-        saveToStorage(next);
-        return next;
-      });
-    },
-    bumpUpdated(id: string) {
-      update(list => {
-        const idx = list.findIndex(s => s.id === id);
-        if (idx < 0) return list;
-        const s = list[idx];
-        const next = [{ ...s, updated_at: new Date().toISOString() }, ...list.filter((_, i) => i !== idx)];
-        saveToStorage(next);
-        return next;
-      });
+    async bumpUpdated(id: Id<"sessions">) {
+      await client.mutation(api.sessions.bumpUpdated, { id });
     },
   };
 }
 
-export const sessionsStore = createSessionsStore();
+/**
+ * One-time migration: push localStorage sessions to Convex, then set migrated flag.
+ */
+export async function migrateLocalStorageSessions(client: ConvexClient) {
+  if (typeof window === 'undefined') return;
+  if (localStorage.getItem(MIGRATED_KEY)) return;
+
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    localStorage.setItem(MIGRATED_KEY, '1');
+    return;
+  }
+
+  try {
+    const sessions: { id: string; title: string }[] = JSON.parse(raw);
+    for (const s of sessions) {
+      await client.mutation(api.sessions.create, {
+        clientId: s.id,
+        title: s.title,
+      });
+    }
+  } catch {
+    // Best-effort migration
+  }
+
+  localStorage.setItem(MIGRATED_KEY, '1');
+}

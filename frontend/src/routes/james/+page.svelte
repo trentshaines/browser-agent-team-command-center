@@ -5,20 +5,44 @@
   import AgentTiles from "$lib/components/AgentTiles.svelte";
   import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
   import ProjectSwitcher from "$lib/components/ProjectSwitcher.svelte";
-  import { tasks, streamUrl, narrate, type AgentPlan, type Session } from '$lib/api';
-  import { sessionsStore } from '$lib/stores/sessions';
+  import { tasks, streamUrl, narrate, type AgentPlan } from '$lib/api';
+  import { useSessionMutations, migrateLocalStorageSessions } from '$lib/stores/sessions';
   import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
   import { goto } from '$app/navigation';
+  import { useSafeQuery, useSafeConvexClient } from '$lib/convex';
+  import { api } from '../../convex/_generated/api';
+  import type { Id } from '../../convex/_generated/dataModel';
 
   let createModalOpen = $state(false);
   let spawnModalOpen = $state(false);
-  let sessionId = $state<string | null>(null);
 
-  // Sessions list (reactive via store subscription)
-  let sessions = $state<Session[]>([]);
-  sessionsStore.subscribe(v => { sessions = v; });
+  // Current session: we track both the Convex _id and the clientId (UUID used in URLs/SSE)
+  let sessionConvexId = $state<Id<"sessions"> | null>(null);
+  let sessionClientId = $state<string | null>(null);
+
+  // Convex client + session mutations (null if Convex not configured)
+  const convex = useSafeConvexClient();
+  const sessionMutations = convex ? useSessionMutations() : null;
+
+  // Sessions list from Convex (reactive query)
+  const sessionsQuery = useSafeQuery(api.sessions.list, {});
+  const sessions = $derived(sessionsQuery.data ?? []);
+
+  // Messages from Convex for current session (skip when no session selected)
+  const messagesQuery = useSafeQuery(
+    api.messages.listBySession,
+    () => sessionConvexId ? { sessionId: sessionConvexId } : 'skip',
+  );
+  const persistedMessages = $derived(messagesQuery.data ?? []);
+
+  // Agent runs from Convex for current session (skip when no session selected)
+  const agentRunsQuery = useSafeQuery(
+    api.agentRuns.listBySession,
+    () => sessionConvexId ? { sessionId: sessionConvexId } : 'skip',
+  );
+  const persistedAgentRuns = $derived(agentRunsQuery.data ?? []);
 
   /** Push or remove ?session= in the URL without a full navigation. */
   function syncSessionToUrl(id: string | null) {
@@ -28,14 +52,27 @@
     goto(url.pathname + url.search, { replaceState: true, noScroll: true });
   }
 
-  // Chat state
-  let messageList = $state<WidgetMessage[]>([]);
+  // Chat state — local streaming buffer (messages being streamed that aren't persisted yet)
+  let streamingMessages = $state<WidgetMessage[]>([]);
   let streaming = $state(false);
   let cancelledMessageId = $state<string | null>(null);
 
-  // Agent state
-  let currentTaskId = $state<string | null>(null);
-  let agentRuns = $state<AgentRun[]>([]);
+  // Merged message list: persisted + streaming buffer
+  const messageList = $derived<WidgetMessage[]>([
+    ...persistedMessages.map((m) => ({
+      id: m.clientId,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      created_at: new Date(m._creationTime).toISOString(),
+      category: m.category as WidgetMessage['category'],
+      senderName: m.senderName,
+      agentId: m.agentId,
+    })),
+    ...streamingMessages,
+  ]);
+
+  // Agent state — merge persisted + live local state
+  let liveAgentRuns = $state<AgentRun[]>([]);
   let agentFrames = $state<Record<string, {
     step: number | null;
     url: string | null;
@@ -43,28 +80,55 @@
     done: boolean;
   }>>({});
 
+  // Merged agent runs: persisted first, then any live-only runs
+  const agentRuns: AgentRun[] = $derived.by(() => {
+    const persisted = persistedAgentRuns.map((r) => ({
+      id: r.clientId,
+      name: r.name,
+      task: r.task,
+      status: r.status as AgentRun['status'],
+      result: r.result ?? null,
+      total_steps: r.totalSteps,
+      steps: r.steps.map((s) => ({
+        step: s.step,
+        url: s.url ?? null,
+        action: s.action ?? null,
+        thought: s.thought ?? null,
+        evaluation: s.evaluation ?? null,
+        success: s.success ?? null,
+        extracted_content: s.extractedContent ?? null,
+        error: s.error ?? null,
+      })),
+      liveUrl: r.liveUrl ?? null,
+    }));
+    const persistedIds = new Set(persisted.map((r) => r.id));
+    const liveOnly = liveAgentRuns.filter((r) => !persistedIds.has(r.id));
+    return [...persisted, ...liveOnly];
+  });
+
+  // Agent state
+  let currentTaskId = $state<string | null>(null);
+
   // Map agent_run_id → agent name for chat attribution
   const agentNames = new Map<string, string>();
   // Map agent_run_id → task description
   const agentTasks = new Map<string, string>();
+  // Map agent clientId → Convex _id (for mutations)
+  const agentConvexIds = new Map<string, Id<"agentRuns">>();
 
   // --- Log accumulator + narration timer ---
-  // Logs accumulate silently per-agent. Periodically we ask the LLM to
-  // synthesize them into a conversational message and post that to chat.
-  const agentLogBuffers = new Map<string, string[]>();  // agentId → log lines
-  const narrationCursors = new Map<string, number>();   // agentId → last narrated log index
+  const agentLogBuffers = new Map<string, string[]>();
+  const narrationCursors = new Map<string, number>();
   let narrateTimer: ReturnType<typeof setInterval> | null = null;
-  const NARRATE_INTERVAL = 8_000;  // ms between narration sweeps
-  const MIN_NEW_LOGS = 3;          // require this many new logs before narrating
+  const NARRATE_INTERVAL = 8_000;
+  const MIN_NEW_LOGS = 3;
 
-  /** Format a log entry into a short human-readable string for the LLM. */
   function formatLogLine(action: string, url: string | null): string {
     const host = url ? (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })() : null;
     if (host) return `${action} on ${host}`;
     return action;
   }
 
-  /** Accumulate a log entry for an agent (no chat message created). */
   function accumulateLog(agentId: string, action: string, url: string | null) {
     const line = formatLogLine(action, url);
     const buf = agentLogBuffers.get(agentId);
@@ -72,7 +136,19 @@
     else agentLogBuffers.set(agentId, [line]);
   }
 
-  /** Ask /narrate to synthesize an agent's recent logs into a chat message. */
+  async function persistMessage(msg: WidgetMessage) {
+    if (!convex || !sessionConvexId) return;
+    await convex.mutation(api.messages.send, {
+      sessionId: sessionConvexId,
+      clientId: msg.id,
+      role: msg.role,
+      content: msg.content,
+      category: msg.category,
+      senderName: msg.senderName,
+      agentId: msg.agentId,
+    });
+  }
+
   async function narrateAgent(agentId: string, opts?: { completed?: boolean; result?: string }) {
     const logs = agentLogBuffers.get(agentId) ?? [];
     const cursor = narrationCursors.get(agentId) ?? 0;
@@ -83,6 +159,16 @@
     const task = agentTasks.get(agentId) ?? '';
     narrationCursors.set(agentId, logs.length);
 
+    const msg: WidgetMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      senderName: name,
+      category: opts?.completed ? 'completion' : 'status',
+      agentId,
+    };
+
     try {
       const { message } = await narrate.synthesize({
         agent_name: name,
@@ -91,35 +177,19 @@
         completed: opts?.completed,
         result: opts?.result,
       });
-      messageList = [...messageList, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: message,
-        created_at: new Date().toISOString(),
-        senderName: name,
-        category: opts?.completed ? 'completion' : 'status',
-        agentId,
-      }];
+      msg.content = message;
     } catch {
-      // Fallback: post a raw summary
-      const fallback = opts?.completed
+      msg.content = opts?.completed
         ? (opts.result ? `Done — ${opts.result.slice(0, 200)}` : 'Finished')
         : newLogs[newLogs.length - 1] ?? '';
-      if (fallback) {
-        messageList = [...messageList, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: fallback,
-          created_at: new Date().toISOString(),
-          senderName: name,
-          category: opts?.completed ? 'completion' : 'status',
-          agentId,
-        }];
-      }
+    }
+
+    if (msg.content) {
+      // Persist to Convex (not to streaming buffer — Convex query will pick it up)
+      await persistMessage(msg);
     }
   }
 
-  /** Periodic sweep: narrate any agent that has enough new logs. */
   async function narrationSweep() {
     for (const [agentId, logs] of agentLogBuffers) {
       const cursor = narrationCursors.get(agentId) ?? 0;
@@ -142,6 +212,25 @@
     stopNarrationTimer();
     agentLogBuffers.clear();
     narrationCursors.clear();
+    sseEventLog = [];
+  }
+
+  // --- SSE debug log: accumulate all raw events for later inspection ---
+  let sseEventLog: { ts: string; event: string; data: unknown }[] = [];
+
+  function logSSEEvent(eventType: string, data: unknown) {
+    sseEventLog.push({ ts: new Date().toISOString(), event: eventType, data });
+  }
+
+  /** Download the accumulated SSE log as a JSON file. Call from browser console: window.__dumpSSELog() */
+  function dumpSSELog() {
+    const blob = new Blob([JSON.stringify(sseEventLog, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sse-log-${sessionClientId ?? 'unknown'}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   let eventSource: EventSource | null = null;
@@ -155,27 +244,31 @@
       eventSource!.addEventListener('error', (e) => { console.warn('[SSE] error/reconnect', eventSource?.readyState, e); resolve(); }, { once: true });
     });
 
-    // Debug: log ALL incoming SSE events
-    eventSource.onmessage = (e) => console.log('[SSE] message (unnamed):', e.data?.slice(0, 120));
+    eventSource.onmessage = (e) => {
+      console.log('[SSE] message (unnamed):', e.data?.slice(0, 120));
+      try { logSSEEvent('message', JSON.parse(e.data)); } catch { logSSEEvent('message', e.data); }
+    };
 
     eventSource.addEventListener('delta', (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('delta', data);
       if (data.message_id === cancelledMessageId) return;
-      const last = messageList[messageList.length - 1];
+      const last = streamingMessages[streamingMessages.length - 1];
       if (last?.id === data.message_id) {
-        messageList[messageList.length - 1] = { ...last, content: last.content + data.delta };
+        streamingMessages[streamingMessages.length - 1] = { ...last, content: last.content + data.delta };
       } else {
-        const idx = messageList.findIndex(m => m.id === data.message_id);
-        if (idx >= 0) messageList[idx] = { ...messageList[idx], content: messageList[idx].content + data.delta };
+        const idx = streamingMessages.findIndex(m => m.id === data.message_id);
+        if (idx >= 0) streamingMessages[idx] = { ...streamingMessages[idx], content: streamingMessages[idx].content + data.delta };
       }
     });
 
-    eventSource.addEventListener('done', (e) => {
+    eventSource.addEventListener('done', async (e) => {
       const data = JSON.parse(e.data);
-      // Backend sends { agents: [{ agent_id, status, result }] }
+      logSSEEvent('done', data);
       if (data.agents && Array.isArray(data.agents)) {
         for (const a of data.agents) {
-          agentRuns = agentRuns.map(r =>
+          // Update local state
+          liveAgentRuns = liveAgentRuns.map(r =>
             r.id === a.agent_id
               ? { ...r, status: a.status === 'complete' ? 'complete' : 'error', result: a.result }
               : r
@@ -186,17 +279,24 @@
       agentFrames = Object.fromEntries(
         Object.entries(agentFrames).map(([aid, f]) => [aid, { ...f, done: true }])
       );
+
+      // Persist any streaming messages that were being buffered
+      for (const msg of streamingMessages) {
+        await persistMessage(msg);
+      }
+      streamingMessages = [];
     });
 
-    eventSource.addEventListener('agent_event', (e) => {
+    eventSource.addEventListener('agent_event', async (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('agent_event', data);
       console.log('[SSE] agent_event:', data.type, data);
       if (data.type === 'agent_spawned') {
-        if (agentRuns.some(r => r.id === data.agent_id)) return;
-        const name = data.name ?? `Browser ${agentRuns.length + 1}`;
+        if (liveAgentRuns.some(r => r.id === data.agent_id)) return;
+        const name = data.name ?? `Browser ${liveAgentRuns.length + persistedAgentRuns.length + 1}`;
         agentNames.set(data.agent_id, name);
         agentTasks.set(data.agent_id, data.task);
-        agentRuns = [...agentRuns, {
+        liveAgentRuns = [...liveAgentRuns, {
           id: data.agent_id,
           name,
           task: data.task,
@@ -204,8 +304,22 @@
           steps: [],
           liveUrl: data.live_url ?? null,
         }];
-        // Spawn messages go directly to chat (brief, no LLM needed)
-        messageList = [...messageList, {
+
+        // Persist agent run to Convex
+        if (convex && sessionConvexId) {
+          const convexId = await convex.mutation(api.agentRuns.create, {
+            sessionId: sessionConvexId,
+            clientId: data.agent_id,
+            name,
+            task: data.task,
+            status: 'running',
+            liveUrl: data.live_url ?? undefined,
+          });
+          agentConvexIds.set(data.agent_id, convexId);
+        }
+
+        // Persist spawn message
+        const spawnMsg: WidgetMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
           content: `On it — ${data.task}`,
@@ -213,43 +327,81 @@
           senderName: name,
           category: 'spawn',
           agentId: data.agent_id,
-        }];
+        };
+        await persistMessage(spawnMsg);
         startNarrationTimer();
       } else if (data.type === 'agent_complete') {
-        agentRuns = agentRuns.map(r =>
+        liveAgentRuns = liveAgentRuns.map(r =>
           r.id === data.agent_run_id
             ? { ...r, status: data.result ? 'complete' : 'error', result: data.result, total_steps: data.total_steps }
             : r
         );
-        // Narrate the completion with full log context + result
-        narrateAgent(data.agent_run_id, {
+
+        // Persist status update
+        const convexId = agentConvexIds.get(data.agent_run_id);
+        if (convex && convexId) {
+          await convex.mutation(api.agentRuns.updateStatus, {
+            id: convexId,
+            status: data.result ? 'complete' : 'error',
+            result: data.result ?? undefined,
+            totalSteps: data.total_steps ?? undefined,
+          });
+        }
+
+        await narrateAgent(data.agent_run_id, {
           completed: true,
           result: data.result ?? undefined,
         });
       }
     });
 
-    eventSource.addEventListener('agent_log', (e) => {
+    eventSource.addEventListener('agent_log', async (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('agent_log', data);
       console.log('[SSE] agent_log:', data.action, data.url);
-      const runIdx = agentRuns.findIndex(r => r.id === data.agent_run_id);
+      const runIdx = liveAgentRuns.findIndex(r => r.id === data.agent_run_id);
       if (runIdx >= 0) {
-        if (agentRuns[runIdx].steps.some(s => s.step === data.step)) return;
-        agentRuns[runIdx] = { ...agentRuns[runIdx], steps: [...agentRuns[runIdx].steps, data] };
-        // Accumulate silently — narration timer will synthesize into chat
+        if (liveAgentRuns[runIdx].steps.some(s => s.step === data.step)) return;
+        liveAgentRuns[runIdx] = { ...liveAgentRuns[runIdx], steps: [...liveAgentRuns[runIdx].steps, data] };
         accumulateLog(data.agent_run_id, data.action, data.url);
+
+        // Persist step to Convex
+        const convexId = agentConvexIds.get(data.agent_run_id);
+        if (convex && convexId) {
+          await convex.mutation(api.agentRuns.addStep, {
+            agentRunId: convexId,
+            step: data.step,
+            url: data.url ?? undefined,
+            action: data.action ?? undefined,
+            thought: data.thought ?? undefined,
+            evaluation: data.evaluation ?? undefined,
+            success: data.success ?? undefined,
+            extractedContent: data.extracted_content ?? undefined,
+            error: data.error ?? undefined,
+          });
+        }
       }
     });
 
-    eventSource.addEventListener('handoff', (e) => {
+    eventSource.addEventListener('handoff', async (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('handoff', data);
       console.log('[SSE] handoff:', data.agent_id, data.message);
-      agentRuns = agentRuns.map(r =>
+      liveAgentRuns = liveAgentRuns.map(r =>
         r.id === data.agent_id ? { ...r, status: 'paused' as const } : r
       );
-      // Handoff messages go directly to chat (urgent, user needs to act)
+
+      // Persist paused status
+      const convexId = agentConvexIds.get(data.agent_id);
+      if (convex && convexId) {
+        await convex.mutation(api.agentRuns.updateStatus, {
+          id: convexId,
+          status: 'paused',
+        });
+      }
+
       const name = agentNames.get(data.agent_id) ?? 'Agent';
-      messageList = [...messageList, {
+      const handoffMsg: WidgetMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: `Needs help: ${data.message}`,
@@ -257,21 +409,34 @@
         senderName: name,
         category: 'status',
         agentId: data.agent_id,
-      }];
+      };
+      await persistMessage(handoffMsg);
     });
 
-    eventSource.addEventListener('human_input_received', (e) => {
+    eventSource.addEventListener('human_input_received', async (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('human_input_received', data);
       console.log('[SSE] human_input_received:', data.agent_id);
-      agentRuns = agentRuns.map(r =>
+      liveAgentRuns = liveAgentRuns.map(r =>
         r.id === data.agent_id ? { ...r, status: 'running' as const } : r
       );
+      const convexId = agentConvexIds.get(data.agent_id);
+      if (convex && convexId) {
+        await convex.mutation(api.agentRuns.updateStatus, {
+          id: convexId,
+          status: 'running',
+        });
+      }
     });
 
     eventSource.addEventListener('agent_frame', (e) => {
       const data = JSON.parse(e.data);
+      logSSEEvent('agent_frame', { agent_id: data.agent_id, step: data.step, url: data.url, screenshot_len: data.screenshot?.length });
       console.log('[SSE] agent_frame:', data.agent_id, 'step', data.step, 'screenshot bytes:', data.screenshot?.length);
-      if (!agentRuns.some(r => r.id === data.agent_id)) { console.warn('[SSE] agent_frame dropped — agent not in agentRuns. Have:', agentRuns.map(r => r.id)); return; }
+      if (!liveAgentRuns.some(r => r.id === data.agent_id) && !persistedAgentRuns.some(r => r.clientId === data.agent_id)) {
+        console.warn('[SSE] agent_frame dropped — agent not found');
+        return;
+      }
       agentFrames = { ...agentFrames, [data.agent_id]: {
         step: data.step,
         url: data.url,
@@ -280,7 +445,8 @@
       }};
     });
 
-    eventSource.addEventListener('error_event', () => {
+    eventSource.addEventListener('error_event', (e) => {
+      try { logSSEEvent('error_event', JSON.parse(e.data)); } catch { logSSEEvent('error_event', null); }
       streaming = false;
     });
 
@@ -299,13 +465,18 @@
   }
 
   async function sendMessage(content: string) {
-    if (!sessionId) return;
+    if (!sessionClientId || !sessionConvexId) return;
     if (streaming) {
-      const last = messageList[messageList.length - 1];
+      const last = streamingMessages[streamingMessages.length - 1];
       if (last?.role === 'assistant') cancelledMessageId = last.id;
       streaming = false;
       closeSSE();
-      await connectSSE(sessionId);
+      // Persist any leftover streaming messages
+      for (const msg of streamingMessages) {
+        await persistMessage(msg);
+      }
+      streamingMessages = [];
+      await connectSSE(sessionClientId);
     }
     streaming = true;
     cancelledMessageId = null;
@@ -316,10 +487,11 @@
       created_at: new Date().toISOString(),
       category: 'user',
     };
-    messageList = [...messageList, userMsg];
+    // Persist user message immediately
+    await persistMessage(userMsg);
     await tick();
     try {
-      const resp = await tasks.spawn(sessionId, content);
+      const resp = await tasks.spawn(sessionClientId, content);
       currentTaskId = resp.task_id;
     } catch {
       streaming = false;
@@ -327,10 +499,10 @@
   }
 
   function stopStreaming() {
-    const last = messageList[messageList.length - 1];
+    const last = streamingMessages[streamingMessages.length - 1];
     if (last?.role === 'assistant') cancelledMessageId = last.id;
     streaming = false;
-    const id = sessionId;
+    const id = sessionClientId;
     closeSSE();
     if (id) connectSSE(id);
   }
@@ -345,7 +517,7 @@
   }
 
   async function handleSpawn(name: string, task: string) {
-    if (!sessionId) return;
+    if (!sessionClientId || !sessionConvexId) return;
     const userMsg: WidgetMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -353,41 +525,50 @@
       created_at: new Date().toISOString(),
       category: 'user',
     };
-    messageList = [...messageList, userMsg];
+    await persistMessage(userMsg);
     try {
-      const resp = await tasks.spawn(sessionId, task, [{ name, task }]);
+      const resp = await tasks.spawn(sessionClientId, task, [{ name, task }]);
       currentTaskId = resp.task_id;
     } catch (e) {
       console.error('Failed to spawn agent:', e);
     }
   }
 
-  async function switchSession(id: string) {
-    if (id === sessionId) return;
-    // Reset state
+  async function switchSession(clientId: string) {
+    if (clientId === sessionClientId) return;
+    // Find the Convex session by clientId
+    const session = sessions.find(s => s.clientId === clientId);
+    if (!session) return;
+
     resetNarrationState();
-    messageList = [];
-    agentRuns = [];
+    streamingMessages = [];
+    liveAgentRuns = [];
     agentFrames = {};
     streaming = false;
     cancelledMessageId = null;
     currentTaskId = null;
+    agentConvexIds.clear();
     closeSSE();
-    sessionId = id;
-    syncSessionToUrl(id);
-    sessionsStore.bumpUpdated(id);
-    await connectSSE(id);
+
+    sessionConvexId = session._id;
+    sessionClientId = clientId;
+    syncSessionToUrl(clientId);
+    await sessionMutations?.bumpUpdated(session._id);
+    await connectSSE(clientId);
   }
 
-  function deleteSession(id: string) {
-    sessionsStore.delete(id);
-    if (id === sessionId) {
+  async function deleteSession(clientId: string) {
+    const session = sessions.find(s => s.clientId === clientId);
+    if (!session) return;
+    await sessionMutations?.remove(session._id);
+    if (clientId === sessionClientId) {
       resetNarrationState();
       closeSSE();
-      sessionId = null;
+      sessionConvexId = null;
+      sessionClientId = null;
       currentTaskId = null;
-      messageList = [];
-      agentRuns = [];
+      streamingMessages = [];
+      liveAgentRuns = [];
       agentFrames = {};
       streaming = false;
       cancelledMessageId = null;
@@ -395,23 +576,33 @@
     }
   }
 
-  async function onProjectLaunched(id: string, goal: string, agents: AgentPlan[]) {
-    // Reset state for new session
+  async function onProjectLaunched(clientId: string, goal: string, agents: AgentPlan[]) {
+    // The session was already created in CreateProjectModal — find it
+    // We need to wait briefly for the Convex query to pick it up
+    let session = sessions.find(s => s.clientId === clientId);
+    // If not yet in query results, look it up directly
+    if (!session && convex) {
+      const looked = await convex.query(api.sessions.getByClientId, { clientId });
+      if (looked) session = looked;
+    }
+    if (!session) return;
+
     resetNarrationState();
-    sessionId = id;
-    syncSessionToUrl(id);
+    sessionConvexId = session._id;
+    sessionClientId = clientId;
+    syncSessionToUrl(clientId);
     createModalOpen = false;
-    messageList = [];
-    agentRuns = [];
+    streamingMessages = [];
+    liveAgentRuns = [];
     agentFrames = {};
     streaming = false;
     cancelledMessageId = null;
     currentTaskId = null;
+    agentConvexIds.clear();
     closeSSE();
-    await connectSSE(id);
-    sessionsStore.bumpUpdated(id);
+    await connectSSE(clientId);
+    await sessionMutations?.bumpUpdated(session._id);
 
-    // Use direct task spawning with the confirmed agent team
     const userMsg: WidgetMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -419,24 +610,34 @@
       created_at: new Date().toISOString(),
       category: 'user',
     };
-    messageList = [...messageList, userMsg];
+    await persistMessage(userMsg);
     await tick();
     try {
       streaming = true;
-      const resp = await tasks.spawn(id, goal, agents);
+      const resp = await tasks.spawn(clientId, goal, agents);
       currentTaskId = resp.task_id;
     } catch {
       streaming = false;
     }
   }
 
-  // On mount, load sessions and restore session from URL query param.
-  onMount(() => {
-    sessionsStore.load();
+  // On mount: migrate localStorage + restore session from URL
+  onMount(async () => {
+    (window as any).__dumpSSELog = dumpSSELog;
+    if (convex) {
+      await migrateLocalStorageSessions(convex);
+    }
     const params = new URLSearchParams(window.location.search);
     const restored = params.get('session');
     if (restored) {
-      sessionId = restored;
+      sessionClientId = restored;
+      // Look up Convex ID for this session
+      if (convex) {
+        const session = await convex.query(api.sessions.getByClientId, { clientId: restored });
+        if (session) {
+          sessionConvexId = session._id;
+        }
+      }
       connectSSE(restored);
     }
   });
@@ -462,7 +663,7 @@
   <header class="relative z-10 flex items-center justify-between border-b border-white/15 backdrop-blur-xl px-6 py-3">
     <ProjectSwitcher
       {sessions}
-      currentSessionId={sessionId}
+      currentSessionId={sessionClientId}
       onSwitch={switchSession}
       onDelete={deleteSession}
     />
@@ -478,7 +679,7 @@
   <main class="flex-1 relative z-10 overflow-hidden">
     {#if agentRuns.length > 0}
       <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onResumeAgent={handleResumeAgent} />
-    {:else if sessionId}
+    {:else if sessionClientId}
       <div class="flex items-center justify-center h-full">
         <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>
       </div>
@@ -488,11 +689,11 @@
   <FloatingChatWidget
     messages={messageList}
     {streaming}
-    {agentRuns}
+    agentRuns={agentRuns}
     onSend={sendMessage}
     onStop={stopStreaming}
-    disabled={!sessionId}
-    onSpawnAgent={sessionId ? () => (spawnModalOpen = true) : undefined}
+    disabled={!sessionClientId}
+    onSpawnAgent={sessionClientId ? () => (spawnModalOpen = true) : undefined}
   />
 </div>
 
