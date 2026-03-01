@@ -9,6 +9,20 @@
   } = $props();
 
   const statusSlug = $derived(status.toLowerCase().replace(/\s+/g, '-'));
+
+  const spinColor = $derived(
+    statusSlug === 'done' ? '#10b981'
+    : statusSlug === 'in-progress' ? '#f59e0b'
+    : statusSlug === 'blocked' ? '#ef4444'
+    : '#6b7280'
+  );
+
+  const textClass = $derived(
+    statusSlug === 'done' ? 'text-emerald-500'
+    : statusSlug === 'in-progress' ? 'text-amber-500'
+    : statusSlug === 'blocked' ? 'text-red-500'
+    : 'text-(--text-muted)'
+  );
 </script>
 
 <div
@@ -20,18 +34,18 @@
   role="status"
   aria-label="Agent status: {status}; Agent: {agentName}"
 >
-  <span
-    class={cn(
-      'rounded-full px-2 py-0.5 capitalize',
-      statusSlug === 'done' && 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200',
-      statusSlug === 'in-progress' && 'bg-amber-500/20 text-amber-800 dark:text-amber-200',
-      statusSlug === 'blocked' && 'bg-red-500/20 text-red-800 dark:text-red-200',
-      !['done', 'in-progress', 'blocked'].includes(statusSlug) && 'bg-(--surface-hover) text-(--text-muted)'
-    )}
-    data-status={statusSlug}
-  >
-    {status}
+  <!-- Spinning gradient live indicator -->
+  <div
+    class="size-3 shrink-0 animate-spin rounded-full [animation-duration:1.5s]"
+    style="background: conic-gradient(from 0deg, transparent 0%, {spinColor} 70%, transparent 100%)"
+  ></div>
+
+  <!-- Bracketed status -->
+  <span class={cn('font-semibold', textClass)} data-status={statusSlug}>
+    [{status}]
   </span>
+
+  <!-- Agent name -->
   <span class="truncate text-(--text-muted)" title={agentName}>
     {agentName}
   </span>
