@@ -17,6 +17,17 @@ def _get_queue(session_id: str) -> "asyncio.Queue[str]":
     return _queues[session_id]
 
 
+def flush(session_id: str) -> None:
+    """Discard any unclaimed IDs from a previous turn before starting a new one."""
+    if session_id in _queues:
+        q = _queues[session_id]
+        while not q.empty():
+            try:
+                q.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+
 def push(session_id: str, agent_run_id: str) -> None:
     _get_queue(session_id).put_nowait(agent_run_id)
 

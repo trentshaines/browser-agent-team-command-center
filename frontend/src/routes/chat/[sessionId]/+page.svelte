@@ -145,6 +145,7 @@
     eventSource.addEventListener('agent_event', (e) => {
       const data = JSON.parse(e.data);
       if (data.type === 'agent_spawned') {
+        if (agentRuns.some(r => r.id === data.agent_id)) return; // already tracked (SSE reconnect)
         agentRuns = [...agentRuns, {
           id: data.agent_id,
           name: data.name ?? `Browser ${agentRuns.length + 1}`,
@@ -166,6 +167,7 @@
       const data = JSON.parse(e.data);
       const runIdx = agentRuns.findIndex(r => r.id === data.agent_run_id);
       if (runIdx >= 0) {
+        if (agentRuns[runIdx].steps.some(s => s.step === data.step)) return; // dedup on reconnect
         agentRuns[runIdx] = { ...agentRuns[runIdx], steps: [...agentRuns[runIdx].steps, data] };
       }
       scrollToBottom();
@@ -173,6 +175,8 @@
 
     eventSource.addEventListener('agent_frame', (e) => {
       const data = JSON.parse(e.data);
+      // Ignore frames from agents not in the current run (e.g. leftover from a cancelled turn)
+      if (!agentRuns.some(r => r.id === data.agent_id)) return;
       const isFirstFrame = !agentFrames[data.agent_id];
       agentFrames[data.agent_id] = {
         step: data.step,

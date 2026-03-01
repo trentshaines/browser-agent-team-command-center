@@ -107,6 +107,9 @@ IMPORTANT: Run the script only once. Do not split the task into multiple script 
 The script handles navigation, clicking, form filling, and data extraction internally.
 Return the JSON result from the script exactly as-is — do not modify or summarize it."""
 
+    # Flush stale IDs from any previous cancelled turn before this one starts
+    agent_registry.flush(session_id_str)
+
     # Track Task tool calls to publish agent_spawned / agent_complete via stream parsing
     # (SDK hooks require bidirectional IPC that fails in subprocess mode)
     pending_agent_runs: dict[str, uuid.UUID] = {}  # tool_use_id -> AgentRun.id
