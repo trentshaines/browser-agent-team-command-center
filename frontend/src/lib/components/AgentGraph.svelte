@@ -3,404 +3,490 @@
 
   let { runs }: { runs: AgentRun[] } = $props();
 
-  // ── Layout constants ────────────────────────────────────────────
-  const NW = 160, NH = 58;   // node width / height
-  const HGAP = 200;           // horizontal center-to-center
-  const LANEH = 130;          // vertical center-to-center between lanes
-  const PL = 20, PT = 44, PR = 56, PB = 28;
-
-  // ── Helpers ─────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────
   function getDomain(url: string) {
     try { return new URL(url).hostname.replace(/^www\./, ''); }
     catch { return url.slice(0, 20); }
   }
   function getPath(url: string) {
-    try { const u = new URL(url); return u.pathname + u.search; }
-    catch { return ''; }
+    try {
+      const u = new URL(url);
+      const s = u.pathname + u.search;
+      return s === '/' ? '/' : s;
+    } catch { return url; }
   }
   function trunc(s: string, n: number) {
-    return s.length > n ? s.slice(0, n) + '…' : s;
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
   }
-
-  // Deterministic domain hue — avoids red (0–30°) to not clash with error state
+  // Deterministic domain hue (avoids red 0–40° which conflicts with error state)
   function domainHue(d: string) {
     let h = 5381;
     for (let i = 0; i < d.length; i++) h = (((h << 5) + h) ^ d.charCodeAt(i)) >>> 0;
-    return (h % 270) + 50; // 50–320°
+    return (h % 260) + 55; // 55–315°
   }
-  // HSL color for a domain at a given lightness/alpha
-  const dc = (d: string, l = 50, a = 1) => `hsla(${domainHue(d)},55%,${l}%,${a})`;
+  const dc = (d: string, l = 50, a = 1) => `hsla(${domainHue(d)},58%,${l}%,${a})`;
 
-  // ── Graph data model ────────────────────────────────────────────
-  interface UrlGroup { url: string; domain: string; path: string; steps: AgentStep[]; }
-  interface GNode {
-    id: string;
-    kind: 'task' | 'url' | 'result';
-    ai: number; ni: number;
+  // ── Data model ───────────────────────────────────────────────────
+  interface StepRecord extends AgentStep {
+    agentName: string;
+    agentIdx: number;
+  }
+
+  interface PageInfo {
+    url: string;
+    domain: string;
+    path: string;
+    visits: number;
+    firstSeen: number;
+    steps: StepRecord[];
+    liveAgents: string[];
+  }
+
+  interface DomainInfo {
+    domain: string;
+    totalVisits: number;
+    firstSeen: number;
+    pages: PageInfo[];
+  }
+
+  interface NavEdge {
+    fromUrl: string;
+    toUrl: string;
+    fromDomain: string;
+    toDomain: string;
+    count: number;
+    active: boolean;
+  }
+
+  interface DomainNode {
+    domain: string;
+    info: DomainInfo;
     cx: number; cy: number;
-    g?: UrlGroup;
-    label?: string;
-    status?: string;
-  }
-  interface GEdge {
-    id: string; from: GNode; to: GNode;
-    kind: 'seq' | 'shared';
-    label?: string;
+    radius: number;
   }
 
+  interface PageNode {
+    url: string;
+    domain: string;
+    info: PageInfo;
+    cx: number; cy: number;
+    radius: number;
+  }
+
+  // ── Layout config ────────────────────────────────────────────────
+  const COL_W     = 230;   // horizontal spacing between domain columns
+  const PAD_L     = 60;
+  const PAD_T     = 80;
+  const DOMAIN_Y  = 80;    // y-center of domain nodes
+  const PAGE_GAP  = 68;    // vertical gap between page node centers
+  const DOM_R_MIN = 20;
+  const DOM_R_MAX = 44;
+  const PG_R_MIN  = 9;
+  const PG_R_MAX  = 22;
+
+  // ── Reactive graph ────────────────────────────────────────────────
   const graph = $derived.by(() => {
-    const nodes: GNode[] = [], edges: GEdge[] = [];
-    let eid = 0;
+    const domainMap = new Map<string, DomainInfo>();
+    const pageMap   = new Map<string, PageInfo>();
+    const edgeMap   = new Map<string, NavEdge>();
+    let globalStep  = 0;
 
     for (let ai = 0; ai < runs.length; ai++) {
-      const run = runs[ai];
-      const cy = PT + ai * LANEH + NH / 2;
+      const run       = runs[ai];
+      const agentName = run.name ?? `Browser ${ai + 1}`;
+      let prevUrl: string | null = null;
 
-      // ── Task node (leftmost) ──
-      const task: GNode = {
-        id: `${run.id}:T`, kind: 'task',
-        ai, ni: 0, cx: PL + NW / 2, cy,
-        label: run.task, status: run.status,
-      };
-      nodes.push(task);
+      for (const step of run.steps) {
+        if (!step.url) continue;
+        const url    = step.url;
+        const domain = getDomain(url);
+        const path   = getPath(url);
+        globalStep++;
 
-      // ── Group consecutive steps by URL ──
-      const groups: UrlGroup[] = [];
-      for (const s of run.steps) {
-        if (!s.url) continue;
-        const last = groups[groups.length - 1];
-        if (last && last.url === s.url) last.steps.push(s);
-        else groups.push({ url: s.url, domain: getDomain(s.url), path: getPath(s.url), steps: [s] });
+        // Domain
+        if (!domainMap.has(domain)) {
+          domainMap.set(domain, { domain, totalVisits: 0, firstSeen: globalStep, pages: [] });
+        }
+        domainMap.get(domain)!.totalVisits++;
+
+        // Page
+        if (!pageMap.has(url)) {
+          const pi: PageInfo = { url, domain, path, visits: 0, firstSeen: globalStep, steps: [], liveAgents: [] };
+          pageMap.set(url, pi);
+          domainMap.get(domain)!.pages.push(pi);
+        }
+        const pg = pageMap.get(url)!;
+        pg.visits++;
+        pg.steps.push({ agentName, agentIdx: ai, ...step });
+
+        // Navigation edge
+        if (prevUrl && prevUrl !== url) {
+          const key = `${prevUrl}→${url}`;
+          if (!edgeMap.has(key)) {
+            edgeMap.set(key, { fromUrl: prevUrl, toUrl: url, fromDomain: getDomain(prevUrl), toDomain: domain, count: 0, active: false });
+          }
+          edgeMap.get(key)!.count++;
+        }
+        prevUrl = url;
       }
 
-      // ── URL nodes ──
-      let prev: GNode = task;
-      for (let ni = 0; ni < groups.length; ni++) {
-        const g = groups[ni];
-        const node: GNode = {
-          id: `${run.id}:U:${ni}`, kind: 'url',
-          ai, ni: ni + 1, cx: PL + (ni + 1) * HGAP + NW / 2, cy, g,
-        };
-        nodes.push(node);
-        edges.push({ id: `e${eid++}`, from: prev, to: node, kind: 'seq', label: g.steps[0]?.action_type ?? undefined });
-        prev = node;
+      // Mark live: last URL of a still-running agent
+      if (run.status === 'running' && run.steps.length > 0) {
+        const lastStep = run.steps[run.steps.length - 1];
+        if (lastStep.url) {
+          const pg = pageMap.get(lastStep.url);
+          if (pg && !pg.liveAgents.includes(agentName)) pg.liveAgents.push(agentName);
+        }
+        // Mark last edge as active
+        const len = run.steps.length;
+        if (len >= 2) {
+          const prev2 = run.steps[len - 2];
+          const last2 = run.steps[len - 1];
+          if (prev2.url && last2.url && prev2.url !== last2.url) {
+            const key = `${prev2.url}→${last2.url}`;
+            edgeMap.get(key)!.active = true;
+          }
+        }
       }
-
-      // ── Result node (rightmost) ──
-      const res: GNode = {
-        id: `${run.id}:R`, kind: 'result',
-        ai, ni: groups.length + 1, cx: prev.cx + HGAP, cy,
-        label: run.result ?? undefined, status: run.status,
-      };
-      nodes.push(res);
-      edges.push({ id: `e${eid++}`, from: prev, to: res, kind: 'seq' });
     }
 
-    // ── Cross-lane shared-domain arcs ──
-    // For each domain visited by 2+ agents, draw a dashed arc between their first visits
-    const byDomain = new Map<string, Map<number, GNode>>();
-    for (const n of nodes) {
-      if (n.kind !== 'url') continue;
-      const d = n.g!.domain;
-      if (!byDomain.has(d)) byDomain.set(d, new Map());
-      const m = byDomain.get(d)!;
-      if (!m.has(n.ai)) m.set(n.ai, n); // first occurrence per agent
-    }
-    for (const [domain, agMap] of byDomain) {
-      if (agMap.size < 2) continue;
-      const sorted = [...agMap.values()].sort((a, b) => a.ai - b.ai);
-      for (let i = 0; i < sorted.length - 1; i++)
-        edges.push({ id: `e${eid++}`, from: sorted[i], to: sorted[i + 1], kind: 'shared', label: domain });
+    // Sort domains and pages by first appearance
+    const domains = [...domainMap.values()].sort((a, b) => a.firstSeen - b.firstSeen);
+    for (const d of domains) d.pages.sort((a, b) => a.firstSeen - b.firstSeen);
+
+    // Scale radii
+    const maxDom  = Math.max(...domains.map(d => d.totalVisits), 1);
+    const maxPage = Math.max(...[...pageMap.values()].map(p => p.visits), 1);
+    const domR    = (v: number) => DOM_R_MIN + (v / maxDom)  * (DOM_R_MAX - DOM_R_MIN);
+    const pgR     = (v: number) => PG_R_MIN  + (v / maxPage) * (PG_R_MAX  - PG_R_MIN);
+
+    // Compute positions
+    const domNodes:  DomainNode[]               = [];
+    const pageNodes: PageNode[]                 = [];
+    const pnMap     = new Map<string, PageNode>();
+    let maxH = DOMAIN_Y;
+
+    for (let di = 0; di < domains.length; di++) {
+      const dom = domains[di];
+      const cx  = PAD_L + di * COL_W + COL_W / 2;
+      const r   = domR(dom.totalVisits);
+      domNodes.push({ domain: dom.domain, info: dom, cx, cy: DOMAIN_Y, radius: r });
+
+      let pageY = DOMAIN_Y + r + PAGE_GAP;
+      for (const pg of dom.pages) {
+        const pr = pgR(pg.visits);
+        const pn: PageNode = { url: pg.url, domain: dom.domain, info: pg, cx, cy: pageY, radius: pr };
+        pageNodes.push(pn);
+        pnMap.set(pg.url, pn);
+        pageY += pr * 2 + PAGE_GAP;
+        maxH = Math.max(maxH, pageY);
+      }
     }
 
-    const maxCx = nodes.reduce((m, n) => Math.max(m, n.cx), 0) + NW / 2 + PR;
-    const svgW = Math.max(maxCx, 500);
-    const svgH = runs.length * LANEH + PT + PB;
-    return { nodes, edges, svgW, svgH };
+    // Build edges with resolved node refs
+    const edges = [...edgeMap.values()]
+      .map(e => ({ ...e, from: pnMap.get(e.fromUrl), to: pnMap.get(e.toUrl) }))
+      .filter((e): e is typeof e & { from: PageNode; to: PageNode } => !!e.from && !!e.to);
+
+    const svgW = Math.max(PAD_L + domains.length * COL_W + PAD_L, 400);
+    const svgH = maxH + 60;
+    return { domNodes, pageNodes, edges, pnMap, svgW, svgH };
   });
 
-  // ── Edge path helpers ───────────────────────────────────────────
-  function seqP(f: GNode, t: GNode) {
-    return `M ${f.cx + NW / 2} ${f.cy} L ${t.cx - NW / 2} ${t.cy}`;
-  }
-  function sharedP(f: GNode, t: GNode) {
-    // Cubic bezier curving left of both nodes to show cross-lane connection
-    const x1 = f.cx, y1 = f.cy + NH / 2;
-    const x2 = t.cx, y2 = t.cy - NH / 2;
-    const ctrl = Math.min(x1, x2) - 44;
-    return `M ${x1} ${y1} C ${ctrl} ${y1} ${ctrl} ${y2} ${x2} ${y2}`;
-  }
-
-  // Action type abbreviations for edge labels
-  const ACT: Record<string, string> = {
-    go_to_url: 'nav', navigate_to: 'nav', navigate: 'nav',
-    click_element: 'click', click: 'click',
-    input_text: 'type', type: 'type',
-    extract_content: 'extract', scroll_down: 'scroll',
-    search: 'search', submit: 'submit',
-  };
-  function abbrev(a?: string) {
-    if (!a) return '';
-    return ACT[a] ?? a.replace(/_/g, ' ').slice(0, 9);
+  // ── Edge path (cubic bezier) ─────────────────────────────────────
+  function edgePath(from: PageNode, to: PageNode, count: number): string {
+    const x1 = from.cx, y1 = from.cy;
+    const x2 = to.cx,   y2 = to.cy;
+    if (from.domain === to.domain) {
+      // Same domain: loop to the right
+      const bulge = 48 + count * 8;
+      return `M ${x1} ${y1} C ${x1 + bulge} ${y1} ${x2 + bulge} ${y2} ${x2} ${y2}`;
+    }
+    // Cross-domain: S-curve through midpoint
+    const mx = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
   }
 
-  // ── Selected node for detail panel ─────────────────────────────
-  let sel = $state<GNode | null>(null);
+  // ── Selection ────────────────────────────────────────────────────
+  let sel = $state<PageNode | null>(null);
 </script>
 
 {#if runs.length === 0}
-  <div class="flex items-center justify-center h-full">
-    <p class="text-sm" style="color:var(--text-faint)">Graph appears when agents run</p>
+  <div style="display:flex; align-items:center; justify-content:center; height:100%;">
+    <p style="color:var(--text-faint); font-size:14px;">Graph appears when agents run</p>
   </div>
 {:else}
-  <div class="relative h-full" style="overflow: auto;">
-    <svg width={graph.svgW} height={graph.svgH} style="display:block; min-width:100%;">
-      <defs>
-        <marker id="ag-arr" markerWidth="7" markerHeight="5" refX="6.5" refY="2.5" orient="auto">
-          <path d="M0,0 L7,2.5 L0,5 Z" fill="var(--border)" />
-        </marker>
-      </defs>
+  <div style="display:flex; height:100%; min-height:0;">
+    <!-- Scrollable graph canvas -->
+    <div style="flex:1; overflow:auto; min-width:0;">
+      <svg width={graph.svgW} height={graph.svgH} style="display:block;">
+        <defs>
+          <marker id="g-arrow" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="var(--border)" />
+          </marker>
+          <marker id="g-arrow-live" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L7,3 L0,6 Z" fill="#8b5cf6" />
+          </marker>
+        </defs>
 
-      <!-- Lane backgrounds + agent name labels -->
-      {#each runs as run, ai}
-        {@const ly = PT + ai * LANEH - 10}
-        <rect
-          x={PL / 2} y={ly}
-          width={graph.svgW - PL}
-          height={LANEH - 4}
-          rx="10"
-          fill="var(--surface)" opacity="0.65"
-        />
-        <text x={PL} y={ly + 16}
-          font-size="10" font-family="monospace" font-weight="600"
-          fill="var(--text-faint)"
-        >{run.name ?? `Browser ${ai + 1}`}</text>
-      {/each}
+        <!-- Domain → page connector stubs -->
+        {#each graph.domNodes as dom}
+          {#each dom.info.pages as pg}
+            {@const pn = graph.pnMap.get(pg.url)}
+            {#if pn}
+              <line
+                x1={dom.cx} y1={dom.cy + dom.radius}
+                x2={pn.cx}  y2={pn.cy - pn.radius}
+                stroke="var(--border-subtle)" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"
+              />
+            {/if}
+          {/each}
+        {/each}
 
-      <!-- Shared-domain arcs (behind all nodes) -->
-      {#each graph.edges as e (e.id)}
-        {#if e.kind === 'shared'}
-          <path d={sharedP(e.from, e.to)} fill="none"
-            stroke={dc(e.label!, 50, 0.45)} stroke-width="1.5" stroke-dasharray="5 3"
+        <!-- Navigation edges -->
+        {#each graph.edges as e, i}
+          {@const p = edgePath(e.from, e.to, e.count)}
+          {@const w = Math.min(1 + e.count * 0.5, 3.5)}
+          <!-- Edge line -->
+          <path d={p} fill="none"
+            stroke={e.active ? '#8b5cf6' : 'var(--border)'}
+            stroke-width={e.active ? 2 : w}
+            stroke-opacity={e.active ? 0.9 : 0.55}
+            marker-end={e.active ? 'url(#g-arrow-live)' : 'url(#g-arrow)'}
           />
-          <!-- Domain label at midpoint of arc -->
-          {@const mx = Math.min(e.from.cx, e.to.cx) - 52}
-          {@const my = (e.from.cy + e.to.cy) / 2}
-          <text x={mx} y={my + 4} text-anchor="middle"
-            font-size="9" font-family="monospace"
-            fill={dc(e.label!, 40, 0.7)}
-          >{e.label}</text>
-        {/if}
-      {/each}
-
-      <!-- Sequential edges -->
-      {#each graph.edges as e (e.id)}
-        {#if e.kind === 'seq'}
-          <path d={seqP(e.from, e.to)} fill="none"
-            stroke="var(--border)" stroke-width="1.5" marker-end="url(#ag-arr)"
-          />
-          {#if e.label}
-            {@const mx = (e.from.cx + NW / 2 + e.to.cx - NW / 2) / 2}
-            <text x={mx} y={e.from.cy - 7} text-anchor="middle"
-              font-size="9" font-family="monospace" fill="var(--text-faint)"
-            >{abbrev(e.label)}</text>
+          <!-- Repeat count badge (when navigated >1×) -->
+          {#if e.count > 1}
+            {@const mx = (e.from.cx + e.to.cx) / 2}
+            {@const my = (e.from.cy + e.to.cy) / 2}
+            <circle cx={mx} cy={my} r="9" fill="var(--surface)" stroke="var(--border-subtle)" stroke-width="1"/>
+            <text x={mx} y={my + 3.5} text-anchor="middle"
+              font-size="8" font-family="monospace" fill="var(--text-faint)"
+            >{e.count}×</text>
           {/if}
-        {/if}
-      {/each}
+          <!-- Live traffic particle -->
+          {#if e.active}
+            <circle r="4.5" fill="#8b5cf6" opacity="0.9">
+              <animateMotion dur="2s" repeatCount="indefinite" path={p} />
+            </circle>
+            <!-- second particle offset -->
+            <circle r="3" fill="#a78bfa" opacity="0.6">
+              <animateMotion dur="2s" begin="0.7s" repeatCount="indefinite" path={p} />
+            </circle>
+          {/if}
+        {/each}
 
-      <!-- Nodes -->
-      {#each graph.nodes as n (n.id)}
-        {@const x = n.cx - NW / 2}
-        {@const y = n.cy - NH / 2}
-        {@const isSel = sel?.id === n.id}
-
-        {#if n.kind === 'task'}
-          <g role="button" tabindex="0" style="cursor:pointer"
-            onclick={() => sel = isSel ? null : n}
-            onkeydown={(e) => e.key === 'Enter' && (sel = isSel ? null : n)}
-          >
-            <rect {x} {y} width={NW} height={NH} rx="8"
-              fill="var(--background)"
-              stroke="var(--accent)" stroke-width={isSel ? 2.5 : 1.5}
+        <!-- Domain nodes (large circles, top row) -->
+        {#each graph.domNodes as dom}
+          <g>
+            <circle
+              cx={dom.cx} cy={dom.cy} r={dom.radius}
+              fill={dc(dom.domain, 93)}
+              stroke={dc(dom.domain, 48)}
+              stroke-width="2"
             />
-            <!-- Status dot (top right) -->
-            {#if n.status === 'running'}
-              <circle cx={x + NW - 12} cy={y + 12} r="4" fill="#8b5cf6" opacity="0.9">
-                <animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.3s" repeatCount="indefinite"/>
-              </circle>
-            {:else if n.status === 'complete'}
-              <circle cx={x + NW - 12} cy={y + 12} r="4" fill="#10b981"/>
-            {:else if n.status === 'error'}
-              <circle cx={x + NW - 12} cy={y + 12} r="4" fill="#dc2626"/>
-            {/if}
-            <text x={x + 9} y={y + 17}
-              font-size="9" font-family="monospace" font-weight="700"
-              fill="var(--accent)"
-            >TASK</text>
-            <text x={x + 9} y={y + 33}
-              font-size="10" font-family="sans-serif"
-              fill="var(--text-muted)"
-            >{trunc(n.label ?? '', 21)}</text>
-            <text x={x + 9} y={y + 49}
-              font-size="9" font-family="sans-serif"
-              fill="var(--text-faint)"
-            >{trunc((n.label ?? '').slice(21), 23)}</text>
-          </g>
-
-        {:else if n.kind === 'url'}
-          {@const g = n.g!}
-          {@const hasErr = g.steps.some(s => s.success === false)}
-          {@const hasOk = g.steps.some(s => s.success === true)}
-          {@const hasExtract = g.steps.some(s => !!s.extracted_content)}
-          {@const statusDot = hasErr && !hasOk ? '#dc2626' : hasOk ? '#10b981' : 'var(--border)'}
-          <g role="button" tabindex="0" style="cursor:pointer"
-            onclick={() => sel = isSel ? null : n}
-            onkeydown={(e) => e.key === 'Enter' && (sel = isSel ? null : n)}
-          >
-            <!-- Node body with light domain tint -->
-            <rect {x} {y} width={NW} height={NH} rx="8"
-              fill={dc(g.domain, 96, 1)}
-              stroke={isSel ? dc(g.domain, 45, 1) : dc(g.domain, 75, 0.6)}
-              stroke-width={isSel ? 2.5 : 1.5}
-            />
-            <!-- Domain-colored left accent bar -->
-            <rect x={x} y={y} width="4" height={NH} rx="2"
-              fill={dc(g.domain, 50, 1)}
-            />
-            <!-- Success/error dot (top right) -->
-            <circle cx={x + NW - 12} cy={y + 12} r="4" fill={statusDot} opacity="0.9"/>
-            <!-- Extracted content dot (second from right) -->
-            {#if hasExtract}
-              <circle cx={x + NW - 24} cy={y + 12} r="3" fill="#10b981" opacity="0.65"/>
-            {/if}
             <!-- Domain name -->
-            <text x={x + 12} y={y + 18}
+            <text x={dom.cx} y={dom.cy - (dom.radius > 28 ? 5 : 0)}
+              text-anchor="middle"
               font-size="11" font-family="sans-serif" font-weight="700"
-              fill={dc(g.domain, 28, 1)}
-            >{trunc(g.domain, 16)}</text>
-            <!-- URL path -->
-            <text x={x + 12} y={y + 33}
-              font-size="9" font-family="monospace"
-              fill="var(--text-faint)"
-            >{trunc(g.path, 22)}</text>
-            <!-- Step count -->
-            <text x={x + 12} y={y + 49}
-              font-size="9" font-family="monospace"
-              fill="var(--text-faint)"
-            >{g.steps.length} step{g.steps.length !== 1 ? 's' : ''}{hasExtract ? ' · extracted' : ''}</text>
-          </g>
-
-        {:else if n.kind === 'result'}
-          {@const isOk = n.status === 'complete'}
-          {@const isRun = n.status === 'running'}
-          <g role="button" tabindex="0" style="cursor:pointer"
-            onclick={() => sel = isSel ? null : n}
-            onkeydown={(e) => e.key === 'Enter' && (sel = isSel ? null : n)}
-          >
-            <rect {x} {y} width={NW} height={NH} rx="8"
-              fill={isRun ? 'var(--surface)' : isOk ? '#f0fdf4' : '#fef2f2'}
-              stroke={isRun ? 'var(--border-subtle)' : isOk ? '#86efac' : '#fca5a5'}
-              stroke-width={isSel ? 2.5 : 1.5}
-              stroke-dasharray={isRun ? '4 2' : undefined}
-            />
-            <text x={x + 9} y={y + 17}
-              font-size="9" font-family="monospace" font-weight="700"
-              fill={isRun ? 'var(--text-faint)' : isOk ? '#15803d' : '#b91c1c'}
-            >{isRun ? 'RUNNING…' : isOk ? 'RESULT' : 'ERROR'}</text>
-            {#if n.label}
-              <text x={x + 9} y={y + 33}
-                font-size="10" font-family="sans-serif"
-                fill={isOk ? '#166534' : '#991b1b'}
-              >{trunc(n.label, 21)}</text>
-              {#if n.label.length > 21}
-                <text x={x + 9} y={y + 49}
-                  font-size="10" font-family="sans-serif"
-                  fill={isOk ? '#16a34a' : '#dc2626'}
-                >{trunc(n.label.slice(21), 21)}</text>
-              {/if}
-            {:else if isRun}
-              <text x={x + 9} y={y + 36}
-                font-size="10" font-family="monospace"
-                fill="var(--text-faint)"
-              >in progress…</text>
-            {:else}
-              <text x={x + 9} y={y + 36}
-                font-size="10" font-family="monospace"
-                fill="var(--text-faint)"
-              >no result</text>
+              fill={dc(dom.domain, 22)}
+            >{trunc(dom.domain, 16)}</text>
+            <!-- Visit total -->
+            {#if dom.radius > 24}
+              <text x={dom.cx} y={dom.cy + 13}
+                text-anchor="middle"
+                font-size="9" font-family="monospace"
+                fill={dc(dom.domain, 40, 0.85)}
+              >{dom.info.totalVisits} steps</text>
             {/if}
+            <!-- Page count badge (bottom) -->
+            <text x={dom.cx} y={dom.cy + dom.radius + 14}
+              text-anchor="middle"
+              font-size="9" font-family="monospace"
+              fill="var(--text-faint)"
+            >{dom.info.pages.length} page{dom.info.pages.length !== 1 ? 's' : ''}</text>
           </g>
-        {/if}
-      {/each}
-    </svg>
+        {/each}
 
-    <!-- Detail panel for selected URL node -->
-    {#if sel?.kind === 'url'}
-      {@const g = sel.g!}
+        <!-- Page nodes -->
+        {#each graph.pageNodes as pn}
+          {@const isSel = sel?.url === pn.url}
+          {@const isLive = pn.info.liveAgents.length > 0}
+          <g role="button" tabindex="0" style="cursor:pointer"
+            onclick={() => sel = isSel ? null : pn}
+            onkeydown={(e) => e.key === 'Enter' && (sel = isSel ? null : pn)}
+          >
+            <!-- Live pulse ring -->
+            {#if isLive}
+              <circle cx={pn.cx} cy={pn.cy} r={pn.radius + 8}
+                fill="none"
+                stroke={dc(pn.domain, 55, 0.4)}
+                stroke-width="2"
+              >
+                <animate attributeName="r"
+                  values="{pn.radius + 6};{pn.radius + 14};{pn.radius + 6}"
+                  dur="1.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.7;0.1;0.7" dur="1.8s" repeatCount="indefinite"/>
+              </circle>
+            {/if}
+
+            <!-- Selection ring -->
+            {#if isSel}
+              <circle cx={pn.cx} cy={pn.cy} r={pn.radius + 5}
+                fill="none"
+                stroke={dc(pn.domain, 45, 0.7)}
+                stroke-width="1.5"
+                stroke-dasharray="3 2"
+              />
+            {/if}
+
+            <!-- Page circle body -->
+            <circle
+              cx={pn.cx} cy={pn.cy} r={pn.radius}
+              fill={dc(pn.domain, 90)}
+              stroke={isSel ? dc(pn.domain, 38) : dc(pn.domain, 62, 0.8)}
+              stroke-width={isSel ? 2.5 : 1.5}
+            />
+
+            <!-- Visit count inside node -->
+            <text x={pn.cx} y={pn.cy + 3.5}
+              text-anchor="middle"
+              font-size="9" font-family="monospace" font-weight="700"
+              fill={dc(pn.domain, 28)}
+            >{pn.info.visits}</text>
+
+            <!-- Live dot (top-left of circle) -->
+            {#if isLive}
+              <circle cx={pn.cx - pn.radius * 0.6} cy={pn.cy - pn.radius * 0.6} r="5" fill="#8b5cf6">
+                <animate attributeName="opacity" values="1;0.25;1" dur="0.9s" repeatCount="indefinite"/>
+              </circle>
+            {/if}
+
+            <!-- Path label below node -->
+            <text x={pn.cx} y={pn.cy + pn.radius + 13}
+              text-anchor="middle"
+              font-size="9" font-family="monospace"
+              fill={isSel ? dc(pn.domain, 35) : 'var(--text-faint)'}
+            >{trunc(pn.info.path, 20)}</text>
+          </g>
+        {/each}
+      </svg>
+    </div>
+
+    <!-- Detail sidebar (fixed width, doesn't scroll with graph) -->
+    {#if sel}
+      {@const info = sel.info}
       <div style="
-        position: sticky; top: 8px; float: right; margin-right: 8px;
-        width: 276px;
-        background: var(--background);
-        border: 1px solid var(--border);
-        border-left: 3px solid {dc(g.domain, 50, 1)};
-        border-radius: 12px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+        width: 272px;
+        flex-shrink: 0;
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
         overflow: hidden;
-        z-index: 10;
-        margin-top: -100%;
+        background: var(--background);
       ">
+        <!-- Header -->
+        <div style="
+          padding: 10px 12px;
+          border-bottom: 1px solid var(--border-subtle);
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 8px;
+          background: var(--surface);
+        ">
+          <div style="min-width:0;">
+            <div style="font-size:12px; font-weight:700; color:{dc(sel.domain, 28)}; margin-bottom:2px">
+              {sel.domain}
+            </div>
+            <div style="font-size:9px; font-family:monospace; color:var(--text-faint); word-break:break-all; line-height:1.5">
+              {info.path}
+            </div>
+          </div>
+          <button onclick={() => sel = null}
+            style="background:none; border:none; cursor:pointer; color:var(--text-faint); padding:2px 4px; flex-shrink:0; font-size:13px; line-height:1; border-radius:4px;"
+          >✕</button>
+        </div>
+
+        <!-- Stats row -->
         <div style="
           padding: 8px 12px;
           border-bottom: 1px solid var(--border-subtle);
-          display: flex; align-items: center; gap: 8px; justify-content: space-between;
+          display: flex;
+          gap: 16px;
+          align-items: center;
         ">
-          <span style="font-size:12px; font-weight:700; color:{dc(g.domain, 30, 1)}">{g.domain}</span>
-          <button onclick={() => sel = null}
-            style="font-size:11px; color:var(--text-faint); background:none; border:none; cursor:pointer; padding:2px 6px; border-radius:4px; line-height:1"
-          >✕</button>
+          <div>
+            <div style="font-size:20px; font-weight:700; color:{dc(sel.domain, 28)}; line-height:1">{info.visits}</div>
+            <div style="font-size:9px; color:var(--text-faint)">steps</div>
+          </div>
+          <div>
+            <div style="font-size:20px; font-weight:700; color:{dc(sel.domain, 28)}; line-height:1">
+              {info.steps.filter(s => s.success === true).length}
+            </div>
+            <div style="font-size:9px; color:var(--text-faint)">ok</div>
+          </div>
+          <div>
+            <div style="font-size:20px; font-weight:700; color:#dc2626; line-height:1">
+              {info.steps.filter(s => s.success === false).length}
+            </div>
+            <div style="font-size:9px; color:var(--text-faint)">err</div>
+          </div>
+          {#if info.liveAgents.length > 0}
+            <div style="margin-left:auto; display:flex; align-items:center; gap:5px;">
+              <span style="width:7px; height:7px; border-radius:50%; background:#8b5cf6; display:inline-block; animation: pulse 1s infinite;"></span>
+              <span style="font-size:10px; color:#8b5cf6;">live</span>
+            </div>
+          {/if}
         </div>
-        <div style="padding: 8px 12px;">
-          <p style="font-size:9px; font-family:monospace; color:var(--text-faint); word-break:break-all; margin:0 0 8px; line-height:1.5">{g.url}</p>
-          <div style="display:flex; flex-direction:column; gap:5px; max-height:320px; overflow-y:auto;">
-            {#each g.steps as s}
-              <div style="
-                border: 1px solid var(--border-subtle);
-                border-radius: 7px; padding: 6px 8px;
-                background: var(--surface);
-              ">
-                <div style="display:flex; align-items:center; gap:5px;">
-                  <span style="font-size:9px; color:var(--text-faint); min-width:18px; text-align:right; font-family:monospace">{s.step}</span>
-                  {#if s.action_type}
-                    <span style="
-                      background:var(--surface-hover);
-                      border: 1px solid var(--border-subtle);
-                      border-radius:4px; padding:1px 5px;
-                      font-size:9px; font-family:monospace;
-                      color:var(--text-muted);
-                    ">{s.action_type}</span>
-                  {/if}
-                  {#if s.success === true}
-                    <span style="margin-left:auto; font-size:10px; color:#10b981">✓</span>
-                  {:else if s.success === false}
-                    <span style="margin-left:auto; font-size:10px; color:#dc2626">✗</span>
-                  {/if}
-                </div>
-                {#if s.thought}
-                  <p style="font-size:10px; color:var(--text-faint); margin:4px 0 0; line-height:1.45">{s.thought}</p>
+
+        <!-- URL -->
+        <div style="padding:6px 12px; border-bottom:1px solid var(--border-subtle);">
+          <p style="font-size:9px; font-family:monospace; color:var(--text-faint); word-break:break-all; margin:0; line-height:1.5">{info.url}</p>
+        </div>
+
+        <!-- Steps list -->
+        <div style="flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:5px;">
+          {#each info.steps as s}
+            <div style="
+              border: 1px solid var(--border-subtle);
+              border-radius: 7px;
+              padding: 6px 8px;
+              background: var(--surface);
+            ">
+              <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                <span style="font-size:9px; color:var(--text-faint); min-width:16px; text-align:right; font-family:monospace">{s.step}</span>
+                <span style="font-size:9px; color:var(--text-faint); font-style:italic">{s.agentName}</span>
+                {#if s.action_type}
+                  <span style="
+                    background: var(--surface-hover);
+                    border: 1px solid var(--border-subtle);
+                    border-radius: 4px;
+                    padding: 1px 5px;
+                    font-size: 8px;
+                    font-family: monospace;
+                    color: var(--text-muted);
+                  ">{s.action_type}</span>
                 {/if}
-                {#if s.extracted_content}
-                  <p style="
-                    font-size:9px; font-family:monospace;
-                    color:#15803d; margin:4px 0 0;
-                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-                  ">{s.extracted_content.slice(0, 90)}</p>
-                {/if}
-                {#if s.error}
-                  <p style="font-size:9px; font-family:monospace; color:#dc2626; margin:4px 0 0; line-height:1.4">{s.error}</p>
+                {#if s.success === true}
+                  <span style="margin-left:auto; color:#10b981; font-size:11px">✓</span>
+                {:else if s.success === false}
+                  <span style="margin-left:auto; color:#dc2626; font-size:11px">✗</span>
                 {/if}
               </div>
-            {/each}
-          </div>
+              {#if s.thought}
+                <p style="font-size:10px; color:var(--text-faint); margin:4px 0 0; line-height:1.45">{s.thought}</p>
+              {/if}
+              {#if s.extracted_content}
+                <p style="
+                  font-size: 9px; font-family: monospace; color: #15803d;
+                  margin: 4px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                ">{s.extracted_content.slice(0, 90)}</p>
+              {/if}
+              {#if s.error}
+                <p style="font-size:9px; font-family:monospace; color:#dc2626; margin:4px 0 0; line-height:1.4">{s.error}</p>
+              {/if}
+            </div>
+          {/each}
         </div>
       </div>
     {/if}
