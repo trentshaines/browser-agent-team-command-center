@@ -197,8 +197,24 @@ Return the JSON result from the script exactly as-is."""
                                         except json.JSONDecodeError:
                                             pass
 
-                                    # Emit each step as agent_log SSE
+                                    # Persist and emit each step
                                     for step in steps:
+                                        db.add(AgentRunLog(
+                                            agent_run_id=agent_run_id,
+                                            step=step.get("step", 0),
+                                            url=step.get("url"),
+                                            action_type=step.get("action_type"),
+                                            action_params=step.get("action_params"),
+                                            thought=step.get("thought"),
+                                            evaluation=step.get("evaluation"),
+                                            memory=step.get("memory"),
+                                            extracted_content=step.get("extracted_content"),
+                                            success=step.get("success"),
+                                            error=step.get("error"),
+                                            step_start_time=step.get("step_start_time"),
+                                            step_end_time=step.get("step_end_time"),
+                                            duration_seconds=step.get("duration_seconds"),
+                                        ))
                                         await sse.publish(session_id_str, "agent_log", {
                                             "agent_run_id": str(agent_run_id),
                                             **{k: v for k, v in step.items() if k != "type"},

@@ -54,6 +54,7 @@
         <h1 class="text-3xl font-semibold text-text tracking-tight">
           Windows
         </h1>
+
         <p class="text-text-muted text-lg max-w-md">
           Orchestrate a team of browser agents to research, compare, and extract
           information from the web.
