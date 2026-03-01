@@ -260,50 +260,6 @@ Return the JSON result from the script exactly as-is."""
             os.environ["CLAUDECODE"] = _old_claudecode
 
 
-async def _stream_with_client(
-    client,
-    model: str,
-    session_id_str: str,
-    message_id: uuid.UUID,
-    history: list[dict],
-    db: AsyncSession,
-) -> None:
-    full_response = ""
-    async with client.messages.stream(
-        model=model,
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=history,
-    ) as stream:
-        async for text in stream.text_stream:
-            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
-            full_response += text
-    await _save_and_complete(session_id_str, message_id, full_response, db)
-
-
-async def _run_with_anthropic(
-    session_id_str: str,
-    message_id: uuid.UUID,
-    history: list[dict],
-    db: AsyncSession,
-    settings,
-) -> None:
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    await _stream_with_client(client, "claude-sonnet-4-6", session_id_str, message_id, history, db)
-
-
-async def _run_with_bedrock(
-    session_id_str: str,
-    message_id: uuid.UUID,
-    history: list[dict],
-    db: AsyncSession,
-    settings,
-) -> None:
-    import anthropic
-    client = anthropic.AsyncAnthropicBedrock(aws_region=settings.aws_region)
-    await _stream_with_client(client, "us.anthropic.claude-sonnet-4-6", session_id_str, message_id, history, db)
-
 
 async def _save_and_complete(
     session_id_str: str,
