@@ -45,6 +45,8 @@
     onExpandChange,
     /** Callback to signal the backend that the human is done and the agent can resume. */
     onResume,
+    /** Whether the agent is currently thinking (e.g. just reprompted). */
+    thinking = false,
   }: {
     src?: string;
     alt?: string;
@@ -62,6 +64,7 @@
     blockedMessage?: string | null;
     onExpandChange?: (expanded: boolean) => void;
     onResume?: (() => void) | undefined;
+    thinking?: boolean;
   } = $props();
 
   const isBlocked = $derived(status.toLowerCase() === 'blocked');
@@ -310,7 +313,41 @@
             {/if}
           </div>
         {/if}
+        {#if thinking}
+          <div class="absolute inset-x-0 bottom-0 z-20 px-3 py-2 bg-black/60 backdrop-blur-sm flex items-center gap-1.5 pointer-events-none">
+            <span class="thinking-dots">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </span>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .thinking-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .thinking-dots .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: white;
+    animation: thinking-bounce 1.4s ease-in-out infinite;
+  }
+  .thinking-dots .dot:nth-child(2) {
+    animation-delay: 0.16s;
+  }
+  .thinking-dots .dot:nth-child(3) {
+    animation-delay: 0.32s;
+  }
+  @keyframes thinking-bounce {
+    0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+</style>

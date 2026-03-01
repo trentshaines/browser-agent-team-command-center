@@ -90,29 +90,55 @@ All handlers live in `frontend/src/routes/james/+page.svelte`:
 
 ## Resume Flow
 
+When an agent is paused (handoff), the user interacts with the browser directly, then clicks **Resume Agent** to hand control back:
+
 ```
-User clicks "Resume Agent" in chat
-  → handleResumeAgent()
+User clicks "Resume Agent" on a paused agent tile
+  → handleResumeAgent(agentId)      (page.svelte)
     → POST /task/{task_id}/respond/{agent_id}  (tasks.respond() in api.ts)
-      → server.py endpoint (lines 304-330)
+      → server.py respond() endpoint
+        → Finds agent by agent.id (UUID)
         → agent.signal_human_done()
           → Sets _resume_event → unblocks wait_for_human()
-            → Agent resumes execution
+            → Agent resumes execution on the same browser session
               → Emits HUMAN_INPUT_RECEIVED
                 → Frontend receives SSE 'human_input_received'
                   → Updates agent status → 'running'
 ```
 
+**Important:** The respond and reprompt endpoints match agents by `agent.id` (UUID), **not** `agent.task_id` (browser-use SDK ID). The frontend only knows the UUID.
+
+## Reprompt Flow
+
+After an agent completes, the user can @-mention it in the chat to reprompt it on its existing browser session:
+
+```
+User types "@AgentName do something else" in the chat widget
+  → AgentMentionInput autocomplete resolves the name to an agent ID
+  → sendMessage(content)             (page.svelte)
+    → Detects @-mention, extracts agent ID + instruction
+    → POST /task/{task_id}/agent/{agent_id}/reprompt  (tasks.reprompt() in api.ts)
+      → server.py reprompt_agent() endpoint
+        → Finds agent by agent.id (UUID)
+        → Calls agent.retry(prompt) as a background task
+          → Emits AGENT_STARTED → frontend flips status back to 'running'
+          → Streams steps → frontend accumulates logs + narration
+          → Emits AGENT_COMPLETED → frontend marks 'complete'
+```
+
+The `retry()` method reuses the existing browser session (no new session creation), emitting the same lifecycle events as the initial run so the frontend can track status.
+
 ## Key Files
 
 | File | Purpose |
 |---|---|
-| `backend/agent.py` | Agent lifecycle, `handoff()`, `_do_handoff()`, `_drain_one_stream()` |
+| `backend/agent.py` | Agent lifecycle, `handoff()`, `retry()`, `_do_handoff()`, `_drain_one_stream()` |
 | `helpers.py` | `AgentState` enum, `needs_handoff()`, `judge_step()`, `check_goal()` |
-| `backend/server.py` | FastAPI server, SSE event translation, `/task/{id}/respond/{agent_id}` |
+| `backend/server.py` | FastAPI server, SSE event translation, `/respond/` and `/reprompt` endpoints |
 | `event_queue.py` | `EventType` enum definitions |
-| `frontend/src/lib/api.ts` | `tasks.respond()` for resuming paused agents |
-| `frontend/src/routes/james/+page.svelte` | SSE handlers and agent state management |
+| `frontend/src/lib/api.ts` | `tasks.respond()` for resuming, `tasks.reprompt()` for @-mention reprompt |
+| `frontend/src/routes/james/+page.svelte` | SSE handlers, @-mention parsing, agent state management |
+| `frontend/src/lib/chat/AgentMentionInput.svelte` | Contenteditable input with @-mention autocomplete |
 | `frontend/src/lib/chat/ProgressPanel.svelte` | Progress tab UI showing agent statuses |
 
 ## Mock Backend

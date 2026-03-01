@@ -126,7 +126,7 @@ def _translate_event(event_type: str, data: dict[str, Any], state: TaskState | N
         total_steps = 0
         if state:
             for agent in state.agents:
-                if agent.task_id == agent_id:
+                if agent.id == agent_id:
                     total_steps = len(agent.steps)
                     break
         return {
@@ -341,7 +341,7 @@ async def respond(
 
     target = None
     for agent in state.agents:
-        if agent.task_id == agent_id:
+        if agent.id == agent_id:
             target = agent
             break
 

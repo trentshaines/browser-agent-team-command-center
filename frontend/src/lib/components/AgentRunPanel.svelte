@@ -20,6 +20,7 @@
     total_steps?: number;
     liveUrl?: string | null;
     handoffMessage?: string | null;
+    thinking?: boolean;
   }
 
   let { runs }: { runs: AgentRun[] } = $props();

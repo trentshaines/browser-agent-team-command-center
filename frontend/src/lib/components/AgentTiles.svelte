@@ -44,6 +44,7 @@
         done: run.status !== 'running' && run.status !== 'paused',
         liveUrl: run.liveUrl ?? null,
         handoffMessage: run.handoffMessage ?? null,
+        thinking: run.thinking ?? false,
       };
     })
   );
@@ -95,6 +96,7 @@
         {messages}
         liveUrl={agent.liveUrl}
         blockedMessage={agent.handoffMessage}
+        thinking={agent.thinking}
         {onExpandChange}
         onResume={onResumeAgent ? () => onResumeAgent(agent.agent_id) : undefined}
       />

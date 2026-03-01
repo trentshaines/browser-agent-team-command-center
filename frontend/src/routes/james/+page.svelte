@@ -391,7 +391,7 @@
       const runIdx = liveAgentRuns.findIndex(r => r.id === data.agent_run_id);
       if (runIdx >= 0) {
         if (liveAgentRuns[runIdx].steps.some(s => s.step === data.step)) return;
-        liveAgentRuns[runIdx] = { ...liveAgentRuns[runIdx], steps: [...liveAgentRuns[runIdx].steps, data] };
+        liveAgentRuns[runIdx] = { ...liveAgentRuns[runIdx], steps: [...liveAgentRuns[runIdx].steps, data], thinking: false };
         accumulateLog(data.agent_run_id, data.action, data.url);
 
         // Persist step to Convex
@@ -542,6 +542,26 @@
       if (matchedAgentId && instruction) {
         try {
           await tasks.reprompt(currentTaskId, matchedAgentId, instruction);
+          // Immediately flip agent back to running + thinking so the tile shows activity
+          liveAgentRuns = liveAgentRuns.map(r =>
+            r.id === matchedAgentId ? { ...r, status: 'running' as const, handoffMessage: null, thinking: true } : r
+          );
+          const convexId = agentConvexIds.get(matchedAgentId);
+          if (convex && convexId) {
+            await convex.mutation(api.agentRuns.updateStatus, { id: convexId, status: 'running' });
+          }
+          // Post a thinking message in chat
+          const name = agentNames.get(matchedAgentId) ?? 'Agent';
+          const thinkingMsg: WidgetMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: 'Thinking...',
+            created_at: new Date().toISOString(),
+            senderName: name,
+            category: 'status',
+            agentId: matchedAgentId,
+          };
+          await persistMessage(thinkingMsg);
         } catch (e) {
           console.error('Failed to reprompt agent:', e);
           streaming = false;
