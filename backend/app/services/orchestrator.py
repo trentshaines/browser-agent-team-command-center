@@ -59,7 +59,7 @@ async def _run_with_sdk(
     settings,
 ) -> None:
     import os
-    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
+    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition
 
     # The SDK spawns a claude CLI subprocess. If CLAUDECODE is set (backend was
     # started inside a Claude Code terminal), the subprocess tries to connect to
@@ -95,90 +95,10 @@ The browser runs headlessly and streams screenshots back to the user in real tim
 Write specific, action-oriented tasks. Include the exact URL when known.
 Return the JSON result from the script exactly as-is."""
 
-    # Correlation state for hook closures
-    pending_tasks: dict[str, str] = {}      # tool_use_id -> task text
-    active_runs: dict[str, uuid.UUID] = {}  # sdk_agent_id -> AgentRun.id
-
-    async def on_pre_task(input_data: dict, tool_use_id: str | None, context) -> dict:
-        if tool_use_id:
-            pending_tasks[tool_use_id] = input_data.get("tool_input", {}).get("prompt", "")
-        return {}
-
-    async def on_subagent_start(input_data: dict, tool_use_id: str | None, context) -> dict:
-        try:
-            sdk_id = input_data.get("agent_id", "")
-            task = pending_tasks.get(tool_use_id or "", "browser task")
-            agent_run = AgentRun(
-                session_id=uuid.UUID(session_id_str),
-                message_id=message_id,
-                task=task,
-                status=AgentRunStatus.RUNNING,
-                started_at=datetime.now(timezone.utc),
-            )
-            db.add(agent_run)
-            await db.flush()
-            active_runs[sdk_id] = agent_run.id
-            await sse.publish(session_id_str, "agent_event", {
-                "type": "agent_spawned",
-                "agent_id": str(agent_run.id),
-                "task": task,
-            })
-        except Exception:
-            logger.warning("on_subagent_start failed", exc_info=True)
-        return {}
-
-    async def on_subagent_stop(input_data: dict, tool_use_id: str | None, context) -> dict:
-        try:
-            sdk_id = input_data.get("agent_id", "")
-            agent_run_id = active_runs.get(sdk_id)
-            transcript_path = input_data.get("agent_transcript_path")
-            messages = []
-            if transcript_path:
-                try:
-                    messages = await asyncio.to_thread(_load_transcript, transcript_path)
-                except Exception:
-                    logger.warning("Failed to load transcript from %s", transcript_path, exc_info=True)
-            steps = _extract_browser_steps(messages)
-            final = _extract_final_result(messages)
-            for step in steps:
-                db.add(AgentRunLog(
-                    agent_run_id=agent_run_id,
-                    step=step.get("step", 0),
-                    url=step.get("url"),
-                    action_type=step.get("action_type"),
-                    action_params=step.get("action_params"),
-                    thought=step.get("thought"),
-                    evaluation=step.get("evaluation"),
-                    memory=step.get("memory"),
-                    extracted_content=step.get("extracted_content"),
-                    success=step.get("success"),
-                    error=step.get("error"),
-                    step_start_time=step.get("step_start_time"),
-                    step_end_time=step.get("step_end_time"),
-                    duration_seconds=step.get("duration_seconds"),
-                ))
-            result_row = await db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
-            agent_run = result_row.scalar_one_or_none()
-            if agent_run:
-                agent_run.status = AgentRunStatus.COMPLETE if (final and final.get("success")) else AgentRunStatus.ERROR
-                agent_run.result = final.get("result") if final else None
-                agent_run.error = final.get("error") if final else None
-                agent_run.completed_at = datetime.now(timezone.utc)
-            await db.flush()
-            for step in steps:
-                await sse.publish(session_id_str, "agent_log", {
-                    "agent_run_id": str(agent_run_id),
-                    **{k: v for k, v in step.items() if k != "type"},
-                })
-            await sse.publish(session_id_str, "agent_event", {
-                "type": "agent_complete",
-                "agent_run_id": str(agent_run_id),
-                "result": final.get("result") if final else None,
-                "total_steps": len(steps),
-            })
-        except Exception:
-            logger.warning("on_subagent_stop failed", exc_info=True)
-        return {}
+    # Track Task tool calls to publish agent_spawned / agent_complete via stream parsing
+    # (SDK hooks require bidirectional IPC that fails in subprocess mode)
+    pending_agent_runs: dict[str, uuid.UUID] = {}  # tool_use_id -> AgentRun.id
+    seen_tool_ids: set[str] = set()               # dedup partial-message re-emissions
 
     full_response = ""
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
@@ -206,15 +126,10 @@ Return the JSON result from the script exactly as-is."""
                             tools=["Bash"],
                         )
                     },
-                    hooks={
-                        "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
-                        "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
-                        "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
-                    },
                     setting_sources=["project", "local"],
                 ),
             ):
-                # AssistantMessage has a content list of TextBlock / ThinkingBlock / ToolUseBlock
+                # AssistantMessage has a content list of TextBlock / ThinkingBlock / ToolUseBlock / ToolResultBlock
                 if hasattr(event, "content") and isinstance(event.content, list):
                     for block in event.content:
                         block_type = type(block).__name__
@@ -223,6 +138,53 @@ Return the JSON result from the script exactly as-is."""
                             full_response += block.text
                         elif block_type == "ThinkingBlock" and getattr(block, "thinking", None):
                             await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": block.thinking})
+                        elif block_type == "ToolUseBlock" and getattr(block, "name", None) == "Task":
+                            # Orchestrator is spawning a browser-agent — record it
+                            tool_id = getattr(block, "id", "") or ""
+                            inp = getattr(block, "input", {})
+                            # Only process once (include_partial_messages may re-emit)
+                            if tool_id and tool_id not in seen_tool_ids and isinstance(inp, dict) and inp:
+                                seen_tool_ids.add(tool_id)
+                                prompt = inp.get("prompt", "browser task")
+                                try:
+                                    agent_run = AgentRun(
+                                        session_id=uuid.UUID(session_id_str),
+                                        message_id=message_id,
+                                        task=prompt,
+                                        status=AgentRunStatus.RUNNING,
+                                        started_at=datetime.now(timezone.utc),
+                                    )
+                                    db.add(agent_run)
+                                    await db.flush()
+                                    pending_agent_runs[tool_id] = agent_run.id
+                                    await sse.publish(session_id_str, "agent_event", {
+                                        "type": "agent_spawned",
+                                        "agent_id": str(agent_run.id),
+                                        "task": prompt,
+                                    })
+                                    logger.info("Agent spawned: run=%s task=%s", agent_run.id, prompt[:60])
+                                except Exception:
+                                    logger.warning("Failed to create AgentRun for Task", exc_info=True)
+                        elif block_type == "ToolResultBlock":
+                            tool_id = getattr(block, "tool_use_id", "") or ""
+                            agent_run_id = pending_agent_runs.pop(tool_id, None)
+                            if agent_run_id:
+                                try:
+                                    result_row = await db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
+                                    agent_run = result_row.scalar_one_or_none()
+                                    if agent_run:
+                                        agent_run.status = AgentRunStatus.COMPLETE
+                                        agent_run.completed_at = datetime.now(timezone.utc)
+                                    await db.flush()
+                                    await sse.publish(session_id_str, "agent_event", {
+                                        "type": "agent_complete",
+                                        "agent_run_id": str(agent_run_id),
+                                        "result": None,
+                                        "total_steps": 0,
+                                    })
+                                    logger.info("Agent complete: run=%s", agent_run_id)
+                                except Exception:
+                                    logger.warning("Failed to update AgentRun on completion", exc_info=True)
                 # ResultMessage has the final synthesized result
                 elif hasattr(event, "result") and event.result and not full_response:
                     full_response = event.result
