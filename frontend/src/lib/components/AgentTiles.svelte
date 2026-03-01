@@ -1,5 +1,6 @@
 <script lang="ts">
   import { AgentBrowserWindowTile } from '$lib/components/AgentBrowserWindowTile';
+  import type { Message } from '$lib/api';
 
   type AgentFrame = {
     step: number | null;
@@ -8,7 +9,15 @@
     done: boolean;
   };
 
-  let { frames, fullscreen = false }: { frames: Record<string, AgentFrame>; fullscreen?: boolean } = $props();
+  let {
+    frames,
+    fullscreen = false,
+    messages = [],
+  }: {
+    frames: Record<string, AgentFrame>;
+    fullscreen?: boolean;
+    messages?: Message[];
+  } = $props();
 
   const agents = $derived(
     Object.entries(frames).map(([id, f]) => ({ agent_id: id, ...f }))
@@ -40,6 +49,7 @@
           status={agent.done ? 'Done' : 'In-Progress'}
           agentName={agentName(agent)}
           draggable={true}
+          {messages}
         />
       {/each}
     </div>

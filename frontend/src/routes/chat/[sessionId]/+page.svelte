@@ -396,7 +396,7 @@
     <div id="panel-browser" role="tabpanel" class="flex-1 overflow-y-auto p-4">
       {#if Object.keys(agentFrames).length > 0}
         <!-- Live screenshot tiles -->
-        <AgentTiles frames={agentFrames} fullscreen />
+        <AgentTiles frames={agentFrames} fullscreen messages={messageList} />
       {:else if agentRuns.length > 0}
         <!-- Agents are running but no screenshots yet (Chromium starting up, or cloud mode) -->
         {@const cols = agentRuns.length <= 1 ? 1 : agentRuns.length <= 4 ? 2 : 3}
