@@ -1,10 +1,6 @@
 <script lang="ts">
   import { page } from "$app/stores";
-  import {
-    LogInIcon,
-    MessageSquareIcon,
-    WrenchIcon,
-  } from "lucide-svelte";
+  import { PlusIcon, WrenchIcon } from "lucide-svelte";
   import { FloatingChatWidget } from "$lib/chat";
   import { AgentBrowserWindowTile } from "$lib/components/AgentBrowserWindowTile";
 
@@ -20,29 +16,14 @@
 </svelte:head>
 
 <div class="min-h-screen bg-background flex flex-col">
-  <header
-    class="border-b border-border-subtle bg-surface/50 px-6 py-4 flex items-center justify-between"
-  >
-    <div class="flex items-center gap-2">
-      <span class="text-xl">🪟</span>
-      <span class="font-semibold text-text">Windows</span>
-    </div>
-    <nav class="flex items-center gap-3">
-      <a
-        href="/login"
-        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-      >
-        <LogInIcon size={16} />
-        Sign in
-      </a>
-      <a
-        href="/chat"
-        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
-      >
-        <MessageSquareIcon size={16} />
-        Open app
-      </a>
-    </nav>
+  <header class="relative flex items-center justify-center border-b border-border-subtle bg-surface/50 px-6 py-4">
+    <span class="font-semibold text-text">Windows</span>
+    <button
+      class="absolute right-6 flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+      aria-label="Add"
+    >
+      <PlusIcon size={18} />
+    </button>
   </header>
 
   <main class="flex-1 flex flex-col items-center justify-center px-6 py-16">
@@ -59,23 +40,6 @@
           Orchestrate a team of browser agents to research, compare, and extract
           information from the web.
         </p>
-      </div>
-
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <a
-          href="/login"
-          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-surface hover:bg-surface-hover text-text text-sm font-medium transition-colors"
-        >
-          <LogInIcon size={18} />
-          Sign in with Google
-        </a>
-        <a
-          href="/chat"
-          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-        >
-          <MessageSquareIcon size={18} />
-          Open chat
-        </a>
       </div>
 
       <section class="mt-12 w-full" aria-label="Agent browser windows">
