@@ -1,15 +1,55 @@
 <script lang="ts">
-  import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
+  import { marked } from 'marked';
+  import type { AgentRun, AgentStep } from '$lib/components/AgentRunPanel.svelte';
+  import { slide } from 'svelte/transition';
 
   let {
     agentRuns = [],
     streaming = false,
     orchestratorText = '',
+    executiveSummary = '',
   }: {
     agentRuns?: AgentRun[];
     streaming?: boolean;
     orchestratorText?: string;
+    executiveSummary?: string;
   } = $props();
+
+  const summaryHtml = $derived.by(() => {
+    if (!executiveSummary) return '';
+    return marked.parse(executiveSummary, { async: false, breaks: true }) as string;
+  });
+
+  // Track which agent reports are expanded
+  let expandedReports = $state<Set<string>>(new Set());
+
+  function toggleReport(id: string) {
+    const next = new Set(expandedReports);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    expandedReports = next;
+  }
+
+  // Build a report from agent steps
+  function buildReport(run: AgentRun): { sites: string[]; actions: string[]; extractedContent: string[] } {
+    const sites = new Set<string>();
+    const actions: string[] = [];
+    const extractedContent: string[] = [];
+
+    for (const step of run.steps) {
+      if (step.url) {
+        try { sites.add(new URL(step.url).hostname.replace(/^www\./, '')); }
+        catch { /* skip */ }
+      }
+      if (step.action) {
+        actions.push(step.action);
+      }
+      if (step.extracted_content) {
+        extractedContent.push(step.extracted_content);
+      }
+    }
+
+    return { sites: [...sites], actions, extractedContent };
+  }
 
   // Re-tick every second so elapsed labels update
   let now = $state(Date.now());
@@ -91,7 +131,9 @@
       </span>
     </div>
 
-    {#if orchestratorPreview()}
+    {#if executiveSummary}
+      <!-- Executive summary replaces the orchestrator preview when available -->
+    {:else if orchestratorPreview()}
       <p class="text-[11px] text-text-muted leading-relaxed line-clamp-3">
         {orchestratorPreview()}
         {#if streaming}<span class="inline-block w-0.5 h-3 bg-text-muted/60 align-middle animate-pulse ml-0.5"></span>{/if}
@@ -104,6 +146,21 @@
       </div>
     {/if}
   </div>
+
+  <!-- Executive Summary -->
+  {#if executiveSummary}
+    <div class="shrink-0 border-b border-border-subtle/50 px-4 py-3 max-h-[40%] overflow-y-auto">
+      <div class="flex items-center gap-1.5 mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-status-emerald shrink-0">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>
+        </svg>
+        <span class="text-[10px] font-semibold text-status-emerald uppercase tracking-wider">Executive Summary</span>
+      </div>
+      <div class="text-[11px] text-text-muted leading-relaxed widget-prose">
+        {@html summaryHtml}
+      </div>
+    </div>
+  {/if}
 
   {#if agentRuns.length > 0}
     <!-- Summary bar -->
@@ -178,21 +235,102 @@
                   </span>
                 </div>
               {:else if run.status === 'complete'}
-                <div class="text-[10px] text-text-faint">{run.steps.length} steps · done</div>
+                {@const report = buildReport(run)}
+                <button
+                  type="button"
+                  onclick={() => toggleReport(run.id)}
+                  class="flex items-center gap-1 text-[10px] text-status-emerald hover:underline cursor-pointer"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                    class="shrink-0 transition-transform duration-150 {expandedReports.has(run.id) ? 'rotate-90' : ''}"
+                  ><path d="m9 18 6-6-6-6"/></svg>
+                  {run.steps.length} steps · View report
+                </button>
               {:else}
-                <div class="text-[10px] text-danger">{run.steps.length} steps · failed</div>
+                {@const report = buildReport(run)}
+                <button
+                  type="button"
+                  onclick={() => toggleReport(run.id)}
+                  class="flex items-center gap-1 text-[10px] text-danger hover:underline cursor-pointer"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                    class="shrink-0 transition-transform duration-150 {expandedReports.has(run.id) ? 'rotate-90' : ''}"
+                  ><path d="m9 18 6-6-6-6"/></svg>
+                  {run.steps.length} steps · View report
+                </button>
               {/if}
             </div>
           </div>
 
-          <!-- Result / error footer -->
-          {#if run.result}
-            <div class="px-3 py-1.5 bg-[var(--status-emerald-bg)] border-t border-[var(--status-emerald-border)] text-[10px] text-status-emerald leading-snug">
-              <span class="mr-1 text-status-emerald">↳</span>{run.result}
-            </div>
-          {:else if run.steps.at(-1)?.error}
-            <div class="px-3 py-1.5 bg-[var(--status-danger-bg)] border-t border-[var(--status-danger-border)] text-[10px] text-danger leading-snug">
-              <span class="mr-1">⚠</span>{run.steps.at(-1)?.error}
+          <!-- Expandable report -->
+          {#if (run.status === 'complete' || run.status === 'error') && expandedReports.has(run.id)}
+            {@const report = buildReport(run)}
+            <div transition:slide={{ duration: 180 }} class="border-t border-border-subtle/50">
+              <!-- Result -->
+              {#if run.result}
+                <div class="px-3 py-2 bg-[var(--status-emerald-bg)]">
+                  <div class="text-[9px] font-semibold text-status-emerald uppercase tracking-wider mb-1">Result</div>
+                  <p class="text-[11px] text-text-muted leading-snug">{run.result}</p>
+                </div>
+              {:else if run.steps.at(-1)?.error}
+                <div class="px-3 py-2 bg-[var(--status-danger-bg)]">
+                  <div class="text-[9px] font-semibold text-danger uppercase tracking-wider mb-1">Error</div>
+                  <p class="text-[11px] text-danger/80 leading-snug">{run.steps.at(-1)?.error}</p>
+                </div>
+              {/if}
+
+              <div class="px-3 py-2 space-y-2">
+                <!-- Sites visited -->
+                {#if report.sites.length > 0}
+                  <div>
+                    <div class="text-[9px] font-semibold text-text-faint uppercase tracking-wider mb-1">Sites visited</div>
+                    <div class="flex flex-wrap gap-1">
+                      {#each report.sites as site}
+                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-hover text-[10px] text-text-muted">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 opacity-50"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+                          {site}
+                        </span>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Extracted content -->
+                {#if report.extractedContent.length > 0}
+                  <div>
+                    <div class="text-[9px] font-semibold text-text-faint uppercase tracking-wider mb-1">Extracted data</div>
+                    <div class="space-y-1 max-h-32 overflow-y-auto">
+                      {#each report.extractedContent as content}
+                        <p class="text-[10px] text-text-muted leading-snug bg-surface-hover rounded px-2 py-1">{content}</p>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Step log -->
+                <div>
+                  <div class="text-[9px] font-semibold text-text-faint uppercase tracking-wider mb-1">Steps</div>
+                  <div class="space-y-0.5 max-h-40 overflow-y-auto">
+                    {#each run.steps as step, i}
+                      <div class="flex items-start gap-1.5 text-[10px] text-text-faint">
+                        <span class="shrink-0 w-4 text-right opacity-50">{i + 1}.</span>
+                        <span class="truncate">
+                          {#if step.action}
+                            <span class="text-text-muted">{step.action}</span>
+                          {/if}
+                          {#if step.url}
+                            <span class="opacity-50">@ {(() => { try { return new URL(step.url).hostname.replace(/^www\./, ''); } catch { return step.url; } })()}</span>
+                          {/if}
+                        </span>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              </div>
             </div>
           {/if}
         </div>

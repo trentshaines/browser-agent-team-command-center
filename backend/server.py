@@ -12,8 +12,11 @@ Endpoints:
 
 import asyncio
 import json
+import os
 import uuid
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -87,6 +90,24 @@ class PlanResponse(BaseModel):
 session_queues: dict[str, list[asyncio.Queue]] = {}
 session_to_task: dict[str, str] = {}
 
+# Event log file — one JSON object per line, easy to tail/parse.
+_LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
+_LOG_FILE = _LOG_DIR / "events.jsonl"
+_log_handle = open(_LOG_FILE, "a", buffering=1)  # line-buffered
+
+
+def _log_event(session_id: str, event: dict) -> None:
+    """Append a translated SSE event to the JSONL log file."""
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "session_id": session_id,
+        **event,
+    }
+    # Strip screenshot data to keep the file readable
+    record.pop("screenshot", None)
+    _log_handle.write(json.dumps(record) + "\n")
+
 
 def _translate_event(event_type: str, data: dict[str, Any], state: TaskState | None) -> dict:
     """Translate backend event types to the SSE event names the frontend expects.
@@ -98,7 +119,8 @@ def _translate_event(event_type: str, data: dict[str, Any], state: TaskState | N
       done           → SSE event "done"
     """
     if event_type == "agent_spawned":
-        return {"event": "agent_event", "type": "agent_spawned", **data}
+        return {"event": "agent_event", "type": "agent_spawned",
+                "task": data.get("prompt"), **data}
     elif event_type == "agent_status":
         agent_id = data.get("agent_id")
         total_steps = 0
@@ -138,6 +160,7 @@ def _make_session_callback(session_id: str):
         state = tasks.get(task_id) if task_id else None
 
         event = _translate_event(event_type, data, state)
+        _log_event(session_id, event)
         for q in queues:
             await q.put(event)
 
@@ -336,10 +359,10 @@ async def reprompt_agent(task_id: str, agent_id: str, req: RepromptRequest):
     if not state:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Find the agent by its browser-use task_id
+    # Find the agent by its UUID
     target = None
     for agent in state.agents:
-        if agent.task_id == agent_id:
+        if agent.id == agent_id:
             target = agent
             break
 

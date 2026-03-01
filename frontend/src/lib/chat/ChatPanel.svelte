@@ -1,21 +1,23 @@
 <script lang="ts">
   import WidgetMessageBubble from './WidgetMessageBubble.svelte';
+  import AgentMentionInput from './AgentMentionInput.svelte';
   import type { WidgetMessage } from './types';
+  import type { AgentOption } from './AgentMentionInput.svelte';
 
   let {
     messages,
     onSend,
     placeholder = 'Message the team...',
     onSpawnAgent,
+    agents = [],
   }: {
     messages: WidgetMessage[];
     onSend?: (content: string) => void;
     placeholder?: string;
     onSpawnAgent?: () => void;
+    agents?: AgentOption[];
   } = $props();
 
-  let inputValue = $state('');
-  let inputEl: HTMLInputElement;
   let scrollEl: HTMLDivElement;
 
   $effect(() => {
@@ -24,21 +26,6 @@
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   });
-
-  function submit() {
-    const trimmed = inputValue.trim();
-    if (!trimmed) return;
-    onSend?.(trimmed);
-    inputValue = '';
-    inputEl?.focus();
-  }
-
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
-  }
 </script>
 
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -66,7 +53,7 @@
         {@const prevSender = i > 0 ? (messages[i - 1].senderName ?? (messages[i - 1].role === 'user' ? 'You' : 'Orchestrator')) : null}
         {@const thisSender = msg.senderName ?? (msg.role === 'user' ? 'You' : 'Orchestrator')}
         {@const sameSender = prevSender === thisSender}
-        <WidgetMessageBubble message={msg} senderName={msg.senderName} compact={sameSender} />
+        <WidgetMessageBubble message={msg} senderName={msg.senderName} compact={sameSender} category={msg.category} />
       {/each}
     {/if}
   </div>
@@ -87,14 +74,7 @@
             Agent
           </button>
         {/if}
-        <input
-          bind:this={inputEl}
-          bind:value={inputValue}
-          onkeydown={onKeydown}
-          type="text"
-          {placeholder}
-          class="flex-1 bg-transparent text-xs text-text placeholder:text-text-faint outline-none"
-        />
+        <AgentMentionInput {agents} {placeholder} onSubmit={onSend} />
       </div>
     </div>
   {/if}

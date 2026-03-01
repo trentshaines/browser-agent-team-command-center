@@ -75,6 +75,12 @@ export const tasks = {
       method: 'POST',
       body: JSON.stringify({ prompt, ...(agents ? { agents } : {}) }),
     }),
+  /** Reprompt a completed agent with a new instruction on the same browser session. */
+  reprompt: (taskId: string, agentId: string, prompt: string) =>
+    request<{ ok: boolean }>(`/task/${taskId}/agent/${agentId}/reprompt`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    }),
   /** Send a response to a paused agent. Empty prompt = unpause. */
   respond: async (taskId: string, agentId: string, prompt = '') => {
     const form = new FormData();

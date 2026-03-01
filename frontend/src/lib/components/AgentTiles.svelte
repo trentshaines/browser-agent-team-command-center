@@ -16,14 +16,14 @@
     fullscreen = false,
     messages = [],
     onSpawnAgent,
-    onResumeAgent,
+    onExpandChange,
   }: {
     runs?: AgentRun[];
     frames?: Record<string, AgentFrame>;
     fullscreen?: boolean;
     messages?: Message[];
     onSpawnAgent?: () => void;
-    onResumeAgent?: (agentId: string) => void;
+    onExpandChange?: (expanded: boolean) => void;
   } = $props();
 
   // Merge agentRuns with frame data — tiles appear as soon as agents spawn,
@@ -41,6 +41,7 @@
         screenshot: frame?.screenshot ?? null,
         done: run.status !== 'running' && run.status !== 'paused',
         liveUrl: run.liveUrl ?? null,
+        handoffMessage: run.handoffMessage ?? null,
       };
     })
   );
@@ -91,7 +92,8 @@
         initialTop={fullscreen ? 24 + i * CASCADE : 20 + i * CASCADE}
         {messages}
         liveUrl={agent.liveUrl}
-        onResume={onResumeAgent ? () => onResumeAgent(agent.agent_id) : undefined}
+        blockedMessage={agent.handoffMessage}
+        {onExpandChange}
       />
     {/each}
   </div>

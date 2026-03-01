@@ -39,8 +39,10 @@
     initialTop = 0,
     /** Live browser session URL for interactive takeover. */
     liveUrl = null,
-    /** Callback to signal the backend that the human is done with takeover. */
-    onResume = undefined,
+    /** Message to display when the agent is blocked (e.g. needs human help). */
+    blockedMessage = null,
+    /** Called when the expanded modal opens or closes. */
+    onExpandChange,
   }: {
     src?: string;
     alt?: string;
@@ -55,20 +57,11 @@
     initialLeft?: number;
     initialTop?: number;
     liveUrl?: string | null;
-    onResume?: (() => void) | undefined;
+    blockedMessage?: string | null;
+    onExpandChange?: (expanded: boolean) => void;
   } = $props();
 
-  // Interactive takeover state
-  let isTakeover = $state(false);
-
-  function enterTakeover() {
-    isTakeover = true;
-  }
-
-  function exitTakeover() {
-    isTakeover = false;
-    onResume?.();
-  }
+  const isBlocked = $derived(status.toLowerCase() === 'blocked');
 
   const { aspectRatio, objectFit } = agentBrowserWindowTileConfig;
   const [arW, arH] = aspectRatio.split('/').map(Number);
@@ -93,6 +86,7 @@
       modalOrigin = `calc(50% + ${dx}px) calc(50% + ${dy}px)`;
     }
     isOpen = true;
+    onExpandChange?.(true);
   }
 
   // — Drag to reposition —
@@ -223,10 +217,7 @@
   {messages}
   {modalOrigin}
   {liveUrl}
-  {isTakeover}
-  onEnterTakeover={enterTakeover}
-  onExitTakeover={exitTakeover}
-  onClose={() => (isOpen = false)}
+  onClose={() => { isOpen = false; onExpandChange?.(false); }}
 />
 
 <div
@@ -238,20 +229,22 @@
   <div
     class={cn(
       'touch-none select-none flex flex-col overflow-hidden relative size-full',
-      'rounded-2xl border border-white/25',
+      'rounded-2xl border',
       'bg-white/25 backdrop-blur-2xl',
       'shadow-[0_4px_24px_rgba(0,0,0,0.06),0_12px_28px_-4px_rgba(0,0,0,0.12),0_20px_40px_-8px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.4)]',
-      'ring-1 ring-white/30',
+      isBlocked
+        ? 'border-red-500/60 ring-2 ring-red-500/40 shadow-[0_0_24px_rgba(220,38,38,0.25)] animate-pulse [animation-duration:2s]'
+        : 'border-white/25 ring-1 ring-white/30',
       isResizing && 'ring-2 ring-accent/40'
     )}
   >
     <div
-      class={draggable && !isTakeover ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}
+      class={draggable ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}
       role="presentation"
-      onpointerdown={isTakeover ? undefined : onPointerDown}
-      onpointermove={isTakeover ? undefined : onPointerMove}
-      onpointerup={isTakeover ? undefined : onPointerUp}
-      onpointercancel={isTakeover ? undefined : onPointerUp}
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={onPointerUp}
     >
       <AgentTileStatusBar {status} {agentName} />
     </div>
@@ -281,19 +274,9 @@
           <iframe
             src={liveUrl}
             title="Live browser session"
-            class={cn('size-full border-0 absolute inset-0', !isTakeover && 'pointer-events-none')}
+            class="size-full border-0 absolute inset-0"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
           ></iframe>
-          {#if !isTakeover}
-            <img
-              {src}
-              {alt}
-              class={cn('size-full pointer-events-none absolute inset-0', objectFit, imageClass)}
-              loading="lazy"
-              decoding="async"
-              draggable="false"
-            />
-          {/if}
         {:else}
           <img
             {src}
@@ -304,33 +287,14 @@
             draggable="false"
           />
         {/if}
-      </div>
-    </div>
-    <!-- Take Control / Hand Back buttons -->
-    {#if liveUrl}
-      <div class="absolute bottom-2 left-1/2 -translate-x-1/2 z-30">
-        {#if isTakeover}
-          <button
-            type="button"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg transition-all"
-            onclick={(e) => { e.stopPropagation(); exitTakeover(); }}
-            onpointerdown={(e) => e.stopPropagation()}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
-            Done — Hand Back
-          </button>
-        {:else}
-          <button
-            type="button"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/90 text-gray-800 hover:bg-white shadow-lg backdrop-blur-sm transition-all"
-            onclick={(e) => { e.stopPropagation(); enterTakeover(); }}
-            onpointerdown={(e) => e.stopPropagation()}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-            Take Control
-          </button>
+        {#if isBlocked && blockedMessage}
+          <div class="absolute inset-x-0 bottom-0 z-20 px-3 py-2 bg-red-600/90 backdrop-blur-sm">
+            <p class="text-white text-xs font-medium leading-snug truncate" title={blockedMessage}>
+              Needs help: {blockedMessage}
+            </p>
+          </div>
         {/if}
       </div>
-    {/if}
+    </div>
   </div>
 </div>

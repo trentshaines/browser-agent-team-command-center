@@ -4,6 +4,7 @@
   import ProgressPanel from './ProgressPanel.svelte';
   import type { WidgetMessage } from './types';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
+  import type { AgentOption } from './AgentMentionInput.svelte';
 
   const WIDGET_MIN_W = 320;
   const WIDGET_MAX_W = 640;
@@ -28,17 +29,17 @@
     messages: externalMessages = undefined,
     streaming = false,
     onSend: externalOnSend = undefined,
-    onStop = undefined,
     disabled = false,
     agentRuns = [],
+    executiveSummary = '',
   }: {
     onSpawnAgent?: () => void;
     messages?: WidgetMessage[];
     streaming?: boolean;
     onSend?: (content: string) => void;
-    onStop?: () => void;
     disabled?: boolean;
     agentRuns?: AgentRun[];
+    executiveSummary?: string;
   } = $props();
 
   // Fallback mock messages used only when no external messages are provided.
@@ -48,6 +49,13 @@
   const displayMessages = $derived(controlled ? (externalMessages ?? []) : mockMessages);
   const handleSend = $derived<((content: string) => void) | undefined>(
     disabled ? undefined : (controlled ? externalOnSend : mockSend)
+  );
+
+  // Derive agent options for @-mention autocomplete
+  const agentOptions: AgentOption[] = $derived(
+    agentRuns
+      .filter((r) => r.name)
+      .map((r) => ({ id: r.id, name: r.name! }))
   );
 
   // Latest assistant message text — shown as orchestrator summary in ProgressPanel
@@ -183,19 +191,7 @@
             Progress
           </button>
         </div>
-        {#if streaming && onStop}
-          <button
-            type="button"
-            onclick={onStop}
-            class="shrink-0 ml-1 p-1.5 rounded-xl text-text-muted hover:text-text hover:bg-white/15 transition-colors"
-            aria-label="Stop generating"
-            title="Stop generating"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <rect x="4" y="4" width="16" height="16" rx="2"/>
-            </svg>
-          </button>
-        {:else if streaming}
+        {#if streaming}
           <div class="shrink-0 ml-2 w-3.5 h-3.5 border-2 border-text-muted/40 border-t-text-muted rounded-full animate-spin"></div>
         {/if}
       </div>
@@ -204,9 +200,9 @@
     <!-- Content -->
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
       {#if activeTab === 'chat'}
-        <ChatPanel messages={displayMessages} onSend={handleSend} {onSpawnAgent} />
+        <ChatPanel messages={displayMessages} onSend={handleSend} {onSpawnAgent} agents={agentOptions} />
       {:else}
-        <ProgressPanel {agentRuns} {streaming} {orchestratorText} />
+        <ProgressPanel {agentRuns} {streaming} {orchestratorText} {executiveSummary} />
       {/if}
     </div>
   </div>

@@ -65,10 +65,10 @@
       }
     }
     document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onClick);
+    document.addEventListener('click', onClick);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('click', onClick);
     };
   });
 

@@ -65,6 +65,16 @@ export async function POST({ params, request }) {
 		}, 3000 + baseDelay);
 	});
 
+	// executive summary after all agents complete
+	const summaryDelay = 3200 + agents.length * 200;
+	setTimeout(() => {
+		const agentSummaries = agents.map((a) => `- **${a.name}**: ${a.task}`).join('\n');
+		pushSSE(sessionId, 'summary', {
+			task_id: taskId,
+			summary: `## Results\n\nAll ${agents.length} agents completed their tasks successfully.\n\n${agentSummaries}\n\nThe team gathered the requested information across multiple sources. Review individual agent reports for detailed findings.`,
+		});
+	}, summaryDelay);
+
 	// done event after all agents
 	const doneDelay = 3500 + agents.length * 200;
 	setTimeout(() => {

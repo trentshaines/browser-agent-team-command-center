@@ -17,6 +17,7 @@
 
   let createModalOpen = $state(false);
   let spawnModalOpen = $state(false);
+  let tileExpanded = $state(false);
 
   // Current session: we track both the Convex _id and the clientId (UUID used in URLs/SSE)
   let sessionConvexId = $state<Id<"sessions"> | null>(null);
@@ -56,6 +57,7 @@
   let streamingMessages = $state<WidgetMessage[]>([]);
   let streaming = $state(false);
   let cancelledMessageId = $state<string | null>(null);
+  let executiveSummary = $state('');
 
   // Merged message list: persisted + streaming buffer
   const messageList = $derived<WidgetMessage[]>([
@@ -287,12 +289,39 @@
       streamingMessages = [];
     });
 
+    eventSource.addEventListener('summary', (e) => {
+      const data = JSON.parse(e.data);
+      logSSEEvent('summary', data);
+      console.log('[SSE] summary:', data.summary?.slice(0, 100));
+      if (data.summary) {
+        executiveSummary = data.summary;
+      }
+    });
+
     eventSource.addEventListener('agent_event', async (e) => {
       const data = JSON.parse(e.data);
       logSSEEvent('agent_event', data);
       console.log('[SSE] agent_event:', data.type, data);
       if (data.type === 'agent_spawned') {
-        if (liveAgentRuns.some(r => r.id === data.agent_id)) return;
+        const existing = liveAgentRuns.find(r => r.id === data.agent_id)
+          || persistedAgentRuns.find(r => r.clientId === data.agent_id);
+        if (existing) {
+          // Re-spawn: flip agent back to running
+          liveAgentRuns = liveAgentRuns.map(r =>
+            r.id === data.agent_id ? { ...r, status: 'running' as const } : r
+          );
+          const convexId = agentConvexIds.get(data.agent_id);
+          if (convex && convexId) {
+            await convex.mutation(api.agentRuns.updateStatus, {
+              id: convexId,
+              status: 'running',
+            });
+          }
+          // Reset narration cursor so new steps get narrated
+          narrationCursors.set(data.agent_id, agentLogBuffers.get(data.agent_id)?.length ?? 0);
+          startNarrationTimer();
+          return;
+        }
         const name = data.name ?? `Browser ${liveAgentRuns.length + persistedAgentRuns.length + 1}`;
         agentNames.set(data.agent_id, name);
         agentTasks.set(data.agent_id, data.task);
@@ -388,7 +417,7 @@
       logSSEEvent('handoff', data);
       console.log('[SSE] handoff:', data.agent_id, data.message);
       liveAgentRuns = liveAgentRuns.map(r =>
-        r.id === data.agent_id ? { ...r, status: 'paused' as const } : r
+        r.id === data.agent_id ? { ...r, status: 'paused' as const, handoffMessage: data.message ?? null } : r
       );
 
       // Persist paused status
@@ -404,10 +433,10 @@
       const handoffMsg: WidgetMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `Needs help: ${data.message}`,
+        content: data.message ?? 'Needs human help',
         created_at: new Date().toISOString(),
         senderName: name,
-        category: 'status',
+        category: 'blocked',
         agentId: data.agent_id,
       };
       await persistMessage(handoffMsg);
@@ -418,7 +447,7 @@
       logSSEEvent('human_input_received', data);
       console.log('[SSE] human_input_received:', data.agent_id);
       liveAgentRuns = liveAgentRuns.map(r =>
-        r.id === data.agent_id ? { ...r, status: 'running' as const } : r
+        r.id === data.agent_id ? { ...r, status: 'running' as const, handoffMessage: null } : r
       );
       const convexId = agentConvexIds.get(data.agent_id);
       if (convex && convexId) {
@@ -490,6 +519,37 @@
     // Persist user message immediately
     await persistMessage(userMsg);
     await tick();
+
+    // Check for @-mention reprompt: @AgentName <instruction>
+    // Try to match a known agent name after the leading @
+    if (content.startsWith('@') && currentTaskId) {
+      const rest = content.slice(1); // strip leading @
+      let matchedAgentId: string | null = null;
+      let instruction = '';
+      // Check all known names, longest first to avoid partial matches
+      const entries = [...agentNames.entries()].sort((a, b) => b[1].length - a[1].length);
+      for (const [id, name] of entries) {
+        if (rest.toLowerCase().startsWith(name.toLowerCase())) {
+          const after = rest.slice(name.length);
+          // Must be followed by whitespace or end of string
+          if (after.length === 0 || /^[\s\u00A0]/.test(after)) {
+            matchedAgentId = id;
+            instruction = after.replace(/^[\s\u00A0]+/, '');
+            break;
+          }
+        }
+      }
+      if (matchedAgentId && instruction) {
+        try {
+          await tasks.reprompt(currentTaskId, matchedAgentId, instruction);
+        } catch (e) {
+          console.error('Failed to reprompt agent:', e);
+          streaming = false;
+        }
+        return;
+      }
+    }
+
     try {
       const resp = await tasks.spawn(sessionClientId, content);
       currentTaskId = resp.task_id;
@@ -536,7 +596,6 @@
 
   async function switchSession(clientId: string) {
     if (clientId === sessionClientId) return;
-    // Find the Convex session by clientId
     const session = sessions.find(s => s.clientId === clientId);
     if (!session) return;
 
@@ -547,6 +606,7 @@
     streaming = false;
     cancelledMessageId = null;
     currentTaskId = null;
+    executiveSummary = '';
     agentConvexIds.clear();
     closeSSE();
 
@@ -572,6 +632,7 @@
       agentFrames = {};
       streaming = false;
       cancelledMessageId = null;
+      executiveSummary = '';
       syncSessionToUrl(null);
     }
   }
@@ -598,6 +659,7 @@
     streaming = false;
     cancelledMessageId = null;
     currentTaskId = null;
+    executiveSummary = '';
     agentConvexIds.clear();
     closeSSE();
     await connectSSE(clientId);
@@ -660,7 +722,7 @@
     <div class="gradient-orb orb-3"></div>
     <div class="gradient-orb orb-4"></div>
   </div>
-  <header class="relative z-10 flex items-center justify-between border-b border-white/15 backdrop-blur-xl px-6 py-3">
+  <header class="relative z-20 flex items-center justify-between border-b border-white/15 backdrop-blur-xl px-6 py-3">
     <ProjectSwitcher
       {sessions}
       currentSessionId={sessionClientId}
@@ -678,7 +740,7 @@
 
   <main class="flex-1 relative z-10 overflow-hidden">
     {#if agentRuns.length > 0}
-      <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onResumeAgent={handleResumeAgent} />
+      <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onExpandChange={(v) => (tileExpanded = v)} />
     {:else if sessionClientId}
       <div class="flex items-center justify-center h-full">
         <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>
@@ -686,15 +748,17 @@
     {/if}
   </main>
 
-  <FloatingChatWidget
-    messages={messageList}
-    {streaming}
-    agentRuns={agentRuns}
-    onSend={sendMessage}
-    onStop={stopStreaming}
-    disabled={!sessionClientId}
-    onSpawnAgent={sessionClientId ? () => (spawnModalOpen = true) : undefined}
-  />
+  {#if !tileExpanded}
+    <FloatingChatWidget
+      messages={messageList}
+      {streaming}
+      agentRuns={agentRuns}
+      onSend={sendMessage}
+      disabled={!sessionClientId}
+      {executiveSummary}
+      onSpawnAgent={sessionClientId ? () => (spawnModalOpen = true) : undefined}
+    />
+  {/if}
 </div>
 
 <CreateProjectModal

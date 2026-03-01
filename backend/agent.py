@@ -207,7 +207,7 @@ class BrowserAgent:
 		self.state = AgentState.RUNNING
 		await self._create_session()
 		self._emit(EventType.AGENT_STARTED, {
-			"agent_id": self.id, "prompt": self.prompt,
+			"agent_id": self.id, "name": self.name, "prompt": self.prompt,
 			"session_id": self.session_id, "live_url": self.live_url,
 		})
 		async for step in self._stream_task(self.prompt):
@@ -221,9 +221,17 @@ class BrowserAgent:
 		"""Run a follow-up task on the same browser session."""
 		self.state = AgentState.RUNNING
 		self._log(LogAction.RETRY, follow_up_prompt)
+		self._emit(EventType.AGENT_STARTED, {
+			"agent_id": self.id, "name": self.name, "prompt": follow_up_prompt,
+			"session_id": self.session_id, "live_url": self.live_url,
+		})
 		try:
 			async for step in self._stream_task(follow_up_prompt):
 				yield step
+			self._emit(EventType.AGENT_COMPLETED, {
+				"agent_id": self.id, "prompt": follow_up_prompt,
+				"output": self.result.output or "" if self.result else "",
+			})
 		except Exception as e:
 			self._set_error(e)
 			raise
