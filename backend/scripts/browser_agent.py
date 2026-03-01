@@ -61,20 +61,31 @@ def _emit(data: dict) -> None:
     print(json.dumps(data, default=str), flush=True)
 
 
-async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
-    """POST a screenshot frame to the FastAPI internal endpoint."""
+async def _post_internal(path: str, payload: dict) -> None:
+    """POST to a FastAPI internal endpoint. Fire-and-forget — swallows all errors."""
     port = os.environ.get("PORT", "8000")
     backend_url = os.environ.get("BACKEND_URL", f"http://localhost:{port}")
     token = os.environ.get("INTERNAL_API_TOKEN", "")
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             await client.post(
-                f"{backend_url}/internal/agent-frame",
+                f"{backend_url}{path}",
                 headers={"X-Internal-Token": token},
-                json={"session_id": session_id, "agent_id": agent_id, "step": step, "url": url, "screenshot": screenshot_b64},
+                json=payload,
             )
     except Exception:
         pass
+
+
+async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
+    await _post_internal("/internal/agent-frame", {
+        "session_id": session_id, "agent_id": agent_id,
+        "step": step, "url": url, "screenshot": screenshot_b64,
+    })
+
+
+async def _post_event(session_id: str, payload: dict) -> None:
+    await _post_internal("/internal/agent-event", {"session_id": session_id, **payload})
 
 
 async def run_task(task: str, model: str, headless: bool, session_id: str | None = None) -> dict:
@@ -91,6 +102,9 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
     use_cloud = os.environ.get("BROWSER_USE_CLOUD", "").lower() in ("1", "true", "yes")
     browser_profile = BrowserProfile(use_cloud=use_cloud, headless=headless if not use_cloud else True)
     agent = Agent(task=task, llm=llm, browser_profile=browser_profile)
+
+    if session_id:
+        await _post_event(session_id, {"type": "agent_spawned", "agent_id": agent_id, "task": task})
 
     async def on_step_end(agent: "Agent") -> None:
         """Emit a browser_step JSONL record after each step completes."""
@@ -139,7 +153,7 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             except Exception:
                 pass
 
-        # Capture screenshot and stream to FastAPI if session_id provided
+        # Stream to FastAPI if session_id provided
         if session_id:
             screenshot_b64 = None
             try:
@@ -150,6 +164,20 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
                 pass
             if screenshot_b64:
                 await _post_frame(session_id, agent_id, step_num, url, screenshot_b64)
+            await _post_event(session_id, {
+                "type": "agent_log",
+                "agent_id": agent_id,
+                "step": step_num,
+                "url": url,
+                "action_type": action_type,
+                "action_params": action_params,
+                "thought": last.model_output.next_goal if last.model_output else None,
+                "evaluation": last.model_output.evaluation_previous_goal if last.model_output else None,
+                "memory": last.model_output.memory if last.model_output else None,
+                "extracted_content": extracted_content,
+                "success": success,
+                "error": error,
+            })
 
         _emit({
             "type": "browser_step",
@@ -170,14 +198,29 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
 
     try:
         result = await agent.run(on_step_end=on_step_end)
-        return {
+        outcome = {
             "success": result.is_successful() or False,
             "task": task,
             "result": result.final_result(),
             "total_steps": len(result),
             "total_duration": result.total_duration_seconds(),
         }
+        if session_id:
+            await _post_event(session_id, {
+                "type": "agent_complete",
+                "agent_id": agent_id,
+                "result": outcome["result"],
+                "total_steps": outcome["total_steps"],
+            })
+        return outcome
     except Exception as e:
+        if session_id:
+            await _post_event(session_id, {
+                "type": "agent_complete",
+                "agent_id": agent_id,
+                "result": None,
+                "total_steps": None,
+            })
         return {
             "success": False,
             "task": task,
