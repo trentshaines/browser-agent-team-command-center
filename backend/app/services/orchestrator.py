@@ -60,7 +60,7 @@ async def _run_with_sdk(
     settings,
 ) -> None:
     import os
-    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
+    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition
 
     # The SDK spawns a claude CLI subprocess. If CLAUDECODE is set (backend was
     # started inside a Claude Code terminal), the subprocess tries to connect to
@@ -214,11 +214,9 @@ Return the JSON result from the script exactly as-is."""
                             tools=["Bash"],
                         )
                     },
-                    hooks={
-                        "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
-                        "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
-                        "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
-                    },
+                    # Hooks disabled — async DB ops inside SDK hook callbacks
+                    # cause stream-closed errors in the subprocess communication loop.
+                    # Re-enable once we have a reliable out-of-band callback mechanism.
                 ),
             ):
                 # AssistantMessage has a content list of TextBlock / ThinkingBlock / ToolUseBlock
