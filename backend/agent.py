@@ -21,7 +21,7 @@ from browser_use_sdk.types.task_step_view import TaskStepView
 from browser_use_sdk.types.task_view import TaskView
 
 from event_queue import EventType, add_event
-from helpers import (
+from backend.helpers import (
 	MAX_RETRIES,
 	MAX_RECOVERY_ATTEMPTS,
 	MAX_GOAL_CHECKS,

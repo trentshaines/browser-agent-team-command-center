@@ -4,8 +4,12 @@
   import { planning, type AgentPlan } from '$lib/api';
   import { useSessionMutations } from '$lib/stores/sessions';
   import { agentColorByIndex } from '$lib/palette';
+  import { useSafeConvexClient } from '$lib/convex';
+  import { api } from '../../convex/_generated/api';
+  import type { Id } from '../../convex/_generated/dataModel';
 
   const sessionMutations = useSessionMutations();
+  const convex = useSafeConvexClient();
 
   let {
     isOpen,
@@ -41,6 +45,98 @@
   let planError = $state<string | null>(null);
   let promptInputEl = $state<HTMLTextAreaElement | null>(null);
   let currentSuggestion = $state('');
+
+  // File upload — uploads to Convex storage immediately on selection
+  interface UploadedFile {
+    fileId: Id<"files">;
+    storageId: Id<"_storage">;
+    name: string;
+    size: number;
+    uploading: boolean;
+  }
+  let uploadedFiles = $state<UploadedFile[]>([]);
+  let fileInputEl = $state<HTMLInputElement | null>(null);
+
+  function triggerFileUpload() {
+    fileInputEl?.click();
+  }
+
+  let fileUploadError = $state<string | null>(null);
+
+  async function uploadToConvex(file: File): Promise<UploadedFile> {
+    if (!convex) throw new Error('Convex not configured');
+
+    const mimeType = file.type || 'application/octet-stream';
+
+    // 1. Get a short-lived upload URL
+    const uploadUrl = await convex.mutation(api.files.generateUploadUrl, {});
+
+    // 2. POST the file to Convex storage
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType },
+      body: file,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`Upload failed (${res.status}): ${errText}`);
+    }
+    const { storageId } = await res.json();
+
+    // 3. Save the file reference in the DB
+    const fileId = await convex.mutation(api.files.save, {
+      storageId,
+      name: file.name,
+      size: file.size,
+      type: mimeType,
+    });
+
+    return { fileId, storageId, name: file.name, size: file.size, uploading: false };
+  }
+
+  async function handleFileChange(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    if (!input.files) return;
+    const files = Array.from(input.files);
+    input.value = '';
+    fileUploadError = null;
+
+    for (const file of files) {
+      // Add a placeholder entry showing upload in progress
+      const placeholder: UploadedFile = {
+        fileId: '' as Id<"files">,
+        storageId: '' as Id<"_storage">,
+        name: file.name,
+        size: file.size,
+        uploading: true,
+      };
+      uploadedFiles = [...uploadedFiles, placeholder];
+      const idx = uploadedFiles.length - 1;
+
+      try {
+        const uploaded = await uploadToConvex(file);
+        uploadedFiles = uploadedFiles.map((f, i) => i === idx ? uploaded : f);
+      } catch (err) {
+        // Remove the failed placeholder
+        uploadedFiles = uploadedFiles.filter((_, i) => i !== idx);
+        fileUploadError = err instanceof Error ? err.message : 'File upload failed';
+        console.error('File upload failed:', err);
+      }
+    }
+  }
+
+  async function removeFile(idx: number) {
+    const file = uploadedFiles[idx];
+    uploadedFiles = uploadedFiles.filter((_, i) => i !== idx);
+    // Delete from Convex storage in the background
+    if (file && file.fileId && convex) {
+      try {
+        await convex.mutation(api.files.remove, { id: file.fileId });
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
 
   // Plan results (editable)
   let title = $state('');
@@ -95,6 +191,14 @@
   }
 
   function reset() {
+    // Clean up any uploaded files from Convex storage
+    if (convex) {
+      for (const f of uploadedFiles) {
+        if (f.fileId) {
+          convex.mutation(api.files.remove, { id: f.fileId }).catch(() => {});
+        }
+      }
+    }
     step = 'prompt';
     prompt = '';
     title = '';
@@ -102,7 +206,9 @@
     planning_loading = false;
     launching = false;
     planError = null;
+    fileUploadError = null;
     currentSuggestion = '';
+    uploadedFiles = [];
   }
 
   $effect(() => {
@@ -260,31 +366,87 @@
               <p class="text-xs text-danger">{planError}</p>
             {/if}
 
-            <div class="flex items-center justify-end gap-2 pt-1">
+            {#if fileUploadError}
+              <p class="text-xs text-danger">{fileUploadError}</p>
+            {/if}
+
+            <!-- Hidden file input -->
+            <input
+              bind:this={fileInputEl}
+              type="file"
+              multiple
+              class="hidden"
+              onchange={handleFileChange}
+            />
+
+            {#if uploadedFiles.length > 0}
+              <div class="flex flex-wrap gap-1.5">
+                {#each uploadedFiles as f, idx (idx)}
+                  <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-accent/10 border border-accent/20 text-xs text-text-muted {f.uploading ? 'opacity-60' : ''}">
+                    {#if f.uploading}
+                      <div class="w-3 h-3 border-[1.5px] border-text-faint/30 border-t-text-muted rounded-full animate-spin shrink-0"></div>
+                    {:else}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                    {/if}
+                    <span class="max-w-[120px] truncate">{f.name}</span>
+                    {#if !f.uploading}
+                      <button
+                        type="button"
+                        onclick={() => removeFile(idx)}
+                        class="p-0.5 rounded hover:bg-white/30 text-text-faint hover:text-text transition-colors"
+                        aria-label="Remove file"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M18 6 6 18M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    {/if}
+                  </span>
+                {/each}
+              </div>
+            {/if}
+
+            <div class="flex items-center justify-between gap-2 pt-1">
               <button
                 type="button"
-                onclick={onClose}
+                onclick={triggerFileUpload}
                 disabled={planning_loading}
-                class="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text hover:bg-white/30 transition-all disabled:opacity-40"
+                class="p-2 rounded-lg text-text-faint hover:text-text hover:bg-white/30 transition-all disabled:opacity-40"
+                aria-label="Attach file"
+                title="Attach file"
               >
-                Cancel
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                </svg>
               </button>
-              <button
-                type="button"
-                onclick={planTeam}
-                disabled={!canPlan || planning_loading}
-                class="px-5 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-              >
-                {#if planning_loading}
-                  <div class="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
-                  Planning…
-                {:else}
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                  Plan Team
-                {/if}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  onclick={onClose}
+                  disabled={planning_loading}
+                  class="px-4 py-2 rounded-lg text-sm text-text-muted hover:text-text hover:bg-white/30 transition-all disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onclick={planTeam}
+                  disabled={!canPlan || planning_loading}
+                  class="px-5 py-2 rounded-lg text-sm font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                >
+                  {#if planning_loading}
+                    <div class="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div>
+                    Planning…
+                  {:else}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                    Plan Team
+                  {/if}
+                </button>
+              </div>
             </div>
           </div>
 

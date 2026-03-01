@@ -39,12 +39,15 @@ export const create = mutation({
     sessionId: v.id("sessions"),
     clientId: v.string(),
     name: v.optional(v.string()),
-    task: v.string(),
+    task: v.optional(v.string()),
     status: v.string(),
     liveUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("agentRuns", args);
+    return await ctx.db.insert("agentRuns", {
+      ...args,
+      task: args.task ?? "",
+    });
   },
 });
 

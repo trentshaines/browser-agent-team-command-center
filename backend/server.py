@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.agent import BrowserAgent, Orchestrator, task_refiner, summarize_results
-from helpers import _bedrock_call_haiku
+from backend.helpers import _bedrock_call_haiku
 
 app = FastAPI(title="Browser Agent API")
 
