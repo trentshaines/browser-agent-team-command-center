@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -106,7 +105,11 @@ Return the JSON result from the script exactly as-is."""
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
 
     def _on_stderr(line: str) -> None:
-        logger.warning("Claude subprocess stderr: %s", line.rstrip())
+        stripped = line.rstrip()
+        if "[frame]" in stripped:
+            logger.error("Claude subprocess stderr: %s", stripped)
+        else:
+            logger.warning("Claude subprocess stderr: %s", stripped)
 
     logger.info("_run_with_sdk: starting SDK query for session %s", session_id_str)
     try:
@@ -268,60 +271,5 @@ def _build_prompt(history: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def _load_transcript(transcript_path: str) -> list:
-    """Load and parse transcript file, returning message list."""
-    data = json.loads(Path(transcript_path).read_text())
-    return data if isinstance(data, list) else data.get("messages", [])
-
-
-def _extract_browser_steps(messages: list) -> list[dict]:
-    """Extract browser_step records from pre-loaded transcript messages."""
-    steps = []
-    for msg in messages:
-        content = msg.get("content", [])
-        if not isinstance(content, list):
-            continue
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_result":
-                raw = block.get("content", "")
-                if isinstance(raw, str):
-                    for line in raw.splitlines():
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            parsed = json.loads(line)
-                            if parsed.get("type") == "browser_step":
-                                steps.append(parsed)
-                        except json.JSONDecodeError:
-                            pass
-    return steps
-
-
-def _extract_final_result(messages: list) -> dict | None:
-    """Extract the browser_result record from pre-loaded transcript messages."""
-    for msg in reversed(messages):
-        content = msg.get("content", [])
-        if not isinstance(content, list):
-            continue
-        for block in reversed(content):
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_result":
-                raw = block.get("content", "")
-                if isinstance(raw, str):
-                    for line in reversed(raw.splitlines()):
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            parsed = json.loads(line)
-                            if parsed.get("type") == "browser_result":
-                                return parsed
-                        except json.JSONDecodeError:
-                            pass
-    return None
 
 

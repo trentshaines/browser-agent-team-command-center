@@ -68,13 +68,15 @@ async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None
     token = os.environ.get("INTERNAL_API_TOKEN", "")
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.post(
+            resp = await client.post(
                 f"{backend_url}/internal/agent-frame",
                 headers={"X-Internal-Token": token},
                 json={"session_id": session_id, "agent_id": agent_id, "step": step, "url": url, "screenshot": screenshot_b64},
             )
-    except Exception:
-        pass
+            if resp.status_code >= 400:
+                print(f"[frame] POST /internal/agent-frame returned {resp.status_code}: {resp.text[:200]}", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[frame] Failed to post frame: {e}", file=sys.stderr, flush=True)
 
 
 async def run_task(task: str, model: str, headless: bool, session_id: str | None = None) -> dict:
@@ -146,8 +148,8 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
                 page = await agent.browser.get_current_page()
                 jpeg = await page.screenshot(type="jpeg", quality=40)
                 screenshot_b64 = base64.b64encode(jpeg).decode()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[frame] Screenshot capture failed at step {step_num}: {e}", file=sys.stderr, flush=True)
             if screenshot_b64:
                 await _post_frame(session_id, agent_id, step_num, url, screenshot_b64)
 

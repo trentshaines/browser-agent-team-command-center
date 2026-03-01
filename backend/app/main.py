@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 
+import logging
+
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import get_settings
@@ -16,7 +19,11 @@ if settings.sentry_dsn:
         dsn=settings.sentry_dsn,
         environment=settings.environment,
         traces_sample_rate=0.1,
-        integrations=[StarletteIntegration(), FastApiIntegration()],
+        integrations=[
+            StarletteIntegration(),
+            FastApiIntegration(),
+            LoggingIntegration(level=logging.WARNING, event_level=logging.ERROR),
+        ],
     )
 
 
