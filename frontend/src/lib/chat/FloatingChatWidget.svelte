@@ -79,7 +79,7 @@
 
   let activeTab = $state<TabId>('chat');
   let widgetW = $state(380);
-  let widgetH = $state(520);
+  let widgetH = $state(680);
   let widgetTop = $state(0);
   let widgetLeft = $state(0);
 
