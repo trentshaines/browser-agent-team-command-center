@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Internal API
     internal_api_token: str = ""  # Set to a strong random secret in production
 
+    # Observability
+    sentry_dsn: str = ""
+
     # App
     frontend_url: str = "http://localhost:5173"
     environment: str = "development"

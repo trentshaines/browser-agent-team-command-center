@@ -81,10 +81,25 @@ async def send_message(
                     db=bg_db,
                 )
                 await bg_db.commit()
-            except Exception:
+            except Exception as exc:
                 logger.exception("Orchestrator failed for session %s", session_id)
-                await bg_db.rollback()
-                await sse.publish(str(session_id), "error_event", {"message_id": str(assistant_msg_id)})
+                error_text = f"_Something went wrong: {exc}_"
+                # Persist error into the assistant message so it's visible after reload
+                try:
+                    result = await bg_db.execute(
+                        select(Message).where(Message.id == assistant_msg_id)
+                    )
+                    msg = result.scalar_one_or_none()
+                    if msg:
+                        msg.content = error_text
+                    await bg_db.commit()
+                except Exception:
+                    logger.exception("Failed to persist error message")
+                    await bg_db.rollback()
+                await sse.publish(str(session_id), "error_event", {
+                    "message_id": str(assistant_msg_id),
+                    "error": str(exc),
+                })
 
     background_tasks.add_task(run_orchestrator)
 

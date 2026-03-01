@@ -182,35 +182,45 @@ Return the JSON result from the script exactly as-is."""
         return {}
 
     full_response = ""
+    _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
+
+    def _on_stderr(line: str) -> None:
+        logger.warning("Claude subprocess stderr: %s", line.rstrip())
 
     try:
-        async for event in query(
-            prompt=_build_prompt(history),
-            options=ClaudeAgentOptions(
-                system_prompt=SYSTEM_PROMPT,
-                allowed_tools=["Task"],
-                permission_mode="bypassPermissions",
-                agents={
-                    "browser-agent": AgentDefinition(
-                        description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",
-                        prompt=BROWSER_AGENT_PROMPT,
-                        tools=["Bash"],
-                    )
-                },
-                hooks={
-                    "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
-                    "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
-                    "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
-                },
-            ),
-        ):
-            if hasattr(event, "text") and event.text:
-                await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
-                full_response += event.text
-            elif hasattr(event, "thinking") and event.thinking:
-                await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
+        async with asyncio.timeout(300):  # 5-minute hard timeout
+            async for event in query(
+                prompt=_build_prompt(history),
+                options=ClaudeAgentOptions(
+                    system_prompt=SYSTEM_PROMPT,
+                    allowed_tools=["Task"],
+                    permission_mode="bypassPermissions",
+                    cwd=_backend_dir,
+                    stderr=_on_stderr,
+                    agents={
+                        "browser-agent": AgentDefinition(
+                            description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",
+                            prompt=BROWSER_AGENT_PROMPT,
+                            tools=["Bash"],
+                        )
+                    },
+                    hooks={
+                        "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
+                        "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
+                        "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
+                    },
+                ),
+            ):
+                if hasattr(event, "text") and event.text:
+                    await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
+                    full_response += event.text
+                elif hasattr(event, "thinking") and event.thinking:
+                    await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
 
         await _save_and_complete(session_id_str, message_id, full_response, db)
+    except TimeoutError:
+        logger.error("Orchestrator timed out (300s) for session %s", session_id_str)
+        await sse.publish(session_id_str, "error_event", {"message_id": str(message_id)})
     finally:
         if _old_claudecode is not None:
             os.environ["CLAUDECODE"] = _old_claudecode
