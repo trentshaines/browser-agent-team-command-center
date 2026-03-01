@@ -12,6 +12,7 @@
 
   export interface AgentRun {
     id: string;
+    name: string;
     task: string;
     status: 'running' | 'complete' | 'error';
     steps: AgentStep[];
@@ -52,7 +53,7 @@
           {/if}
 
           <span class="text-xs text-text-muted flex-1 truncate min-w-0">
-            <span class="text-text-faint mr-1">browser:</span>{run.task}
+            <span class="text-text-faint mr-1.5 font-medium">{run.name}:</span><span class="text-text-faint">{run.task}</span>
           </span>
 
           <span class="text-[10px] text-text-faint shrink-0 ml-2">

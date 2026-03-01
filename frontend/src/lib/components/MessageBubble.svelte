@@ -34,7 +34,6 @@
 {:else}
   <div class="flex justify-start mb-4">
     <div class="max-w-[85%] text-text text-sm w-full">
-      <ThinkingBlock content={thinking} done={thinkingDone} />
       {#if message.content}
         <div class="prose">{@html html}</div>
       {:else if !thinking}
@@ -44,6 +43,7 @@
           <span class="animate-pulse" aria-hidden="true" style="animation-delay:0.3s">●</span>
         </div>
       {/if}
+      <ThinkingBlock content={thinking} done={thinkingDone} />
     </div>
   </div>
 {/if}

@@ -18,26 +18,24 @@ from app.models.agent_run_log import AgentRunLog
 from app.services import sse
 from app.config import get_settings
 
-SYSTEM_PROMPT = """You are a friendly assistant helping non-technical users get things done on the web. You control browser agents that do the actual work — the user never sees the technical details.
+SYSTEM_PROMPT = """You are a friendly, concise assistant helping non-technical users get things done on the web. You control browsers that do the actual work.
 
-YOUR COMMUNICATION STYLE:
-- Talk to the user like a helpful human assistant, not a developer
-- Before acting: briefly explain what you're going to do in plain English (e.g. "I'll look that up for you" or "Let me check a few sites and compare prices")
-- After agents finish: summarize what was found in a clear, friendly way — focus on the answer, not how you got it
-- Never mention "agents", "Task tool", "spawning", "orchestrating", or other technical jargon
-- Never expose error traces, tool call details, or internal reasoning to the user
-- Use markdown naturally (bullet points, bold for key info) to make results easy to scan
+BEFORE ACTING: Write one short sentence acknowledging what you're about to do. Keep it natural and confident — like a capable assistant saying "On it" or "I'll pull that up." No lists, no tables, no status updates, no emojis. The user can already see the browsers working.
 
-WHAT TO DO:
-- Use browser agents (via Task tool) for anything on the web: prices, news, research, availability, bookings, form submissions, logins, comparisons
-- Spawn multiple agents in parallel when the request has multiple parts (e.g. comparing 3 products → check all 3 at once)
-- Only skip browser agents for: pure math, explaining something the user just pasted, or creative writing with no web component
+Examples of good pre-action messages:
+- "I'll check Amazon for both of those now."
+- "Looking that up for you."
+- "I'll search a few sources and compare."
 
-AFTER AGENTS COMPLETE:
-- Lead with the answer the user actually needs
-- Include the key facts, numbers, or results found
-- Offer a clear next step if relevant (e.g. "Want me to go ahead and book it?")
-- Keep it concise — no need to recap what was searched or visited"""
+NEVER do this before acting:
+- Tables showing task/status breakdowns
+- Bullet lists of what each browser will do
+- Emoji-heavy enthusiasm
+- Phrases like "spawning agents", "running in parallel", "here's what's happening"
+
+AFTER RESULTS COME IN: Summarize what was found clearly and concisely. Lead with the answer. Use bullet points or bold text where it helps readability. Offer a next step if relevant.
+
+USE BROWSERS (via Task tool) for anything on the web: prices, research, news, bookings, form submissions, comparisons. Run multiple in parallel when the task has multiple parts. Skip browsers only for pure math, explaining pasted code, or creative writing."""
 
 
 async def run_turn(
@@ -85,9 +83,9 @@ async def _run_with_sdk(
 
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
-Run: uv run python scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
+Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
 
-The script is at scripts/browser_agent.py relative to the backend/ working directory.
+The script is at ../scripts/browser_agent.py (one level above the backend/ working directory).
 The browser runs headlessly and streams screenshots back to the user in real time. You can:
 - Navigate to any URL and extract text, tables, prices, listings
 - Click buttons, links, and UI elements
@@ -103,6 +101,7 @@ Return the JSON result from the script exactly as-is."""
     # (SDK hooks require bidirectional IPC that fails in subprocess mode)
     pending_agent_runs: dict[str, uuid.UUID] = {}  # tool_use_id -> AgentRun.id
     seen_tool_ids: set[str] = set()               # dedup partial-message re-emissions
+    browser_count = 0                              # sequential browser naming
 
     full_response = ""
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
@@ -154,6 +153,8 @@ Return the JSON result from the script exactly as-is."""
                             if tool_id and tool_id not in seen_tool_ids and isinstance(inp, dict) and inp:
                                 seen_tool_ids.add(tool_id)
                                 prompt = inp.get("prompt", "browser task")
+                                browser_count += 1
+                                browser_name = f"Browser {browser_count}"
                                 try:
                                     agent_run = AgentRun(
                                         session_id=uuid.UUID(session_id_str),
@@ -169,8 +170,9 @@ Return the JSON result from the script exactly as-is."""
                                         "type": "agent_spawned",
                                         "agent_id": str(agent_run.id),
                                         "task": prompt,
+                                        "name": browser_name,
                                     })
-                                    logger.info("Agent spawned: run=%s task=%s", agent_run.id, prompt[:60])
+                                    logger.info("Agent spawned: run=%s name=%s task=%s", agent_run.id, browser_name, prompt[:60])
                                 except Exception:
                                     logger.warning("Failed to create AgentRun for Task", exc_info=True)
                         elif block_type == "ToolResultBlock":

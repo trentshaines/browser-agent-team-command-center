@@ -145,8 +145,7 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
         if session_id:
             screenshot_b64 = None
             try:
-                page = await agent.browser.get_current_page()
-                jpeg = await page.screenshot(type="jpeg", quality=40)
+                jpeg = await agent.browser_session.take_screenshot(format="jpeg", quality=40)
                 screenshot_b64 = base64.b64encode(jpeg).decode()
             except Exception as e:
                 print(f"[frame] Screenshot capture failed at step {step_num}: {e}", file=sys.stderr, flush=True)

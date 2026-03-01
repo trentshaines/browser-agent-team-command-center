@@ -145,6 +145,7 @@
       if (data.type === 'agent_spawned') {
         agentRuns = [...agentRuns, {
           id: data.agent_id,
+          name: data.name ?? `Browser ${agentRuns.length + 1}`,
           task: data.task,
           status: 'running',
           steps: [],
