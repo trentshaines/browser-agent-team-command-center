@@ -133,8 +133,9 @@ async def google_auth(
                 username = f"{base}{counter}"
                 counter += 1
             user = await create_user(db=db, email=email, username=username, google_id=google_id, email_verified=True)
-            if google_user.get("picture"):
-                user.profile_image = google_user["picture"]
+            picture = google_user.get("picture", "")
+            if picture and picture.startswith("https://"):
+                user.profile_image = picture
 
     access_token = create_access_token(user.id)
     refresh_token = create_refresh_token(user.id)

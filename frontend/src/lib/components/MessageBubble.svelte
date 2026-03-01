@@ -1,5 +1,6 @@
 <script lang="ts">
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import type { Message } from '$lib/api';
   import ThinkingBlock from './ThinkingBlock.svelte';
 
@@ -15,7 +16,7 @@
 
   const html = $derived(
     message.role === 'assistant' && message.content
-      ? marked.parse(message.content, { async: false }) as string
+      ? DOMPurify.sanitize(marked.parse(message.content, { async: false }) as string)
       : null
   );
 </script>

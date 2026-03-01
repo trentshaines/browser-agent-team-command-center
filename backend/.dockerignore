@@ -1,10 +1,10 @@
-.venv
 .env
 .env.*
-.pytest_cache
-.omc
-tests
+.git
+.venv
 __pycache__
 *.pyc
 *.pyo
-.git
+.pytest_cache
+tests/
+*.egg-info

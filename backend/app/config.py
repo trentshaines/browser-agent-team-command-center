@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     aws_bearer_token_bedrock: str = ""
     llm_provider: str = ""  # set to "bedrock" to force Bedrock for the orchestrator
 
+    # Internal API
+    internal_api_token: str = ""  # Set to a strong random secret in production
+
     # App
     frontend_url: str = "http://localhost:5173"
     environment: str = "development"
