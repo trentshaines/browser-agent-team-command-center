@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     auth_cookie_name: str = "access_token"
     refresh_cookie_name: str = "refresh_token"
-    cookie_secure: bool = False  # True in production
-    cookie_samesite: str = "lax"
+    cookie_secure: bool = False  # Set True in production (COOKIE_SECURE=true)
+    cookie_samesite: str = "lax"  # Use "none" in production for cross-domain (requires cookie_secure=true)
     cookie_domain: str | None = None
 
     # Google OAuth

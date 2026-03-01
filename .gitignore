@@ -31,6 +31,12 @@ agent_history.gif
 .DS_Store
 Thumbs.db
 
+# Frontend build artifacts
+frontend/.svelte-kit/
+frontend/build/
+frontend/node_modules/
+frontend/.env.local
+
 # Editor
 .idea/
 .vscode/

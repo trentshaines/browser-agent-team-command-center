@@ -87,7 +87,7 @@ You have access to Bash to run: python scripts/browser_agent.py --task "..." --v
 
         # Stream text deltas
         if hasattr(event, "text"):
-            await sse.publish(session_id_str, {"type": "text_delta", "text": event.text})
+            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
             full_response += event.text
 
         # Agent spawned
@@ -101,7 +101,7 @@ You have access to Bash to run: python scripts/browser_agent.py --task "..." --v
             )
             db.add(agent_run)
             await db.flush()
-            await sse.publish(session_id_str, {
+            await sse.publish(session_id_str, "agent_event", {
                 "type": "agent_spawned",
                 "agent_id": str(agent_run.id),
                 "task": agent_run.task,
@@ -110,7 +110,7 @@ You have access to Bash to run: python scripts/browser_agent.py --task "..." --v
         # Agent completed
         elif event_type == "AgentCompleted":
             result_text = getattr(event, "result", "")
-            await sse.publish(session_id_str, {
+            await sse.publish(session_id_str, "agent_event", {
                 "type": "agent_complete",
                 "result": result_text,
             })
@@ -137,7 +137,7 @@ async def _run_with_anthropic(
         messages=history,
     ) as stream:
         async for text in stream.text_stream:
-            await sse.publish(session_id_str, {"type": "text_delta", "text": text})
+            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
             full_response += text
 
     await _save_and_complete(session_id_str, message_id, full_response, db)
@@ -157,10 +157,7 @@ async def _save_and_complete(
     if msg:
         msg.content = content
 
-    await sse.publish(session_id_str, {
-        "type": "message_complete",
-        "message_id": str(message_id),
-    })
+    await sse.publish(session_id_str, "done", {"message_id": str(message_id), "content": content})
 
 
 def _build_prompt(history: list[dict]) -> str:
