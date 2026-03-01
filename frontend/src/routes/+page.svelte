@@ -16,6 +16,6 @@
   });
 </script>
 
-<div class="flex items-center justify-center h-screen bg-[#0d0d0d]">
-  <div class="w-6 h-6 border-2 border-[#7c6ff7] border-t-transparent rounded-full animate-spin"></div>
+<div class="flex items-center justify-center h-screen bg-background">
+  <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
 </div>

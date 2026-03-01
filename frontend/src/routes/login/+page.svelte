@@ -13,19 +13,19 @@
   });
 </script>
 
-<div class="flex items-center justify-center h-screen bg-[#0d0d0d]">
+<div class="flex items-center justify-center h-screen bg-background">
   <div class="flex flex-col items-center gap-8 max-w-sm w-full px-6">
     <div class="flex items-center gap-3">
-      <BotIcon size={32} class="text-[#7c6ff7]" />
-      <h1 class="text-2xl font-semibold text-white">Browser Agents</h1>
+      <BotIcon size={32} class="text-accent" />
+      <h1 class="text-2xl font-semibold text-text">Browser Agents</h1>
     </div>
 
-    <div class="w-full bg-[#111] border border-[#222] rounded-2xl p-8 flex flex-col gap-4">
-      <p class="text-sm text-[#888] text-center">Sign in to orchestrate your browser agent team</p>
+    <div class="w-full bg-surface border border-border-subtle rounded-2xl p-8 flex flex-col gap-4">
+      <p class="text-sm text-text-muted text-center">Sign in to orchestrate your browser agent team</p>
 
       <a
         href={auth.googleUrl()}
-        class="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-[#333] bg-[#1a1a1a] hover:bg-[#242424] text-white text-sm font-medium transition-colors"
+        class="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-border bg-surface-hover hover:bg-border-subtle text-text text-sm font-medium transition-colors"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
           <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>

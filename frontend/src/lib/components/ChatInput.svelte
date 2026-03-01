@@ -1,5 +1,7 @@
 <script lang="ts">
   import { SendIcon, SquareIcon } from 'lucide-svelte';
+  import Button from '$lib/components/ui/button.svelte';
+  import { cn } from '$lib/utils';
 
   let {
     onsubmit,
@@ -21,7 +23,6 @@
     if (!trimmed || disabled) return;
     onsubmit(trimmed);
     value = '';
-    // Reset textarea height
     if (textarea) {
       textarea.style.height = 'auto';
     }
@@ -41,9 +42,9 @@
   }
 </script>
 
-<div class="border-t border-[#222] bg-[#0d0d0d] px-4 py-3">
+<div class="border-t border-border-subtle bg-background px-4 py-3">
   <div class="max-w-3xl mx-auto">
-    <div class="flex items-end gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl px-4 py-2 focus-within:border-[#444] transition-colors">
+    <div class="flex items-end gap-2 bg-surface-hover border border-border rounded-2xl px-4 py-2 focus-within:border-border transition-colors">
       <textarea
         bind:this={textarea}
         bind:value
@@ -52,27 +53,31 @@
         placeholder="Message the agent team..."
         rows="1"
         disabled={disabled && !streaming}
-        class="flex-1 bg-transparent text-sm text-[#e8e8e8] placeholder-[#555] resize-none outline-none py-1 max-h-[200px] leading-relaxed disabled:opacity-50"
+        class={cn(
+          'flex-1 bg-transparent text-sm text-text placeholder:text-text-faint resize-none outline-none py-1 max-h-[200px] leading-relaxed',
+          'disabled:opacity-50'
+        )}
       ></textarea>
       {#if streaming && onstop}
-        <button
+        <Button
+          variant="ghost"
           onclick={onstop}
-          class="flex items-center justify-center w-8 h-8 rounded-lg bg-[#333] hover:bg-[#444] text-[#aaa] hover:text-white transition-colors shrink-0 mb-0.5"
+          class="w-8 h-8 rounded-lg shrink-0 mb-0.5 p-0"
           title="Stop"
         >
           <SquareIcon size={14} fill="currentColor" />
-        </button>
+        </Button>
       {:else}
-        <button
+        <Button
           onclick={submit}
           disabled={!value.trim() || disabled}
-          class="flex items-center justify-center w-8 h-8 rounded-lg bg-[#7c6ff7] hover:bg-[#6a5fe0] text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0 mb-0.5"
+          class="w-8 h-8 rounded-lg shrink-0 mb-0.5 p-0"
           title="Send"
         >
           <SendIcon size={14} />
-        </button>
+        </Button>
       {/if}
     </div>
-    <p class="text-xs text-[#444] text-center mt-2">Enter to send · Shift+Enter for newline</p>
+    <p class="text-xs text-text-faint text-center mt-2">Enter to send · Shift+Enter for newline</p>
   </div>
 </div>

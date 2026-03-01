@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { page } from '$app/state';
   import { messages as messagesApi, type Message } from '$lib/api';
   import { sessionsStore } from '$lib/stores/sessions';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
+  import AgentRunPanel, { type AgentRun } from '$lib/components/AgentRunPanel.svelte';
 
   let sessionId = $derived(page.params.sessionId!);
   let messageList = $state<Message[]>([]);
@@ -13,6 +14,18 @@
   let error = $state<string | null>(null);
   let scrollEl: HTMLDivElement;
   let eventSource: EventSource | null = null;
+
+  // Agent run tracking
+  let agentRuns = $state<AgentRun[]>([]);
+
+  // Smart scroll: only snap to bottom if user is already near the bottom
+  let autoScroll = true;
+
+  function onScroll() {
+    if (!scrollEl) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollEl;
+    autoScroll = scrollHeight - scrollTop - clientHeight < 120;
+  }
 
   // Load messages when session changes
   $effect(() => {
@@ -26,6 +39,8 @@
   async function loadMessages(id: string) {
     loading = true;
     error = null;
+    autoScroll = true;
+    agentRuns = [];
     closeSSE();
     try {
       messageList = await messagesApi.list(id);
@@ -35,15 +50,12 @@
       loading = false;
     }
     await tick();
-    scrollToBottom();
-
-    // Connect SSE
+    scrollToBottom(true);
     connectSSE(id);
 
     // Handle starter prompt from query param
     const starter = page.url.searchParams.get('starter');
     if (starter && messageList.length === 0) {
-      // Remove from URL without navigation
       const url = new URL(window.location.href);
       url.searchParams.delete('starter');
       history.replaceState({}, '', url.toString());
@@ -67,7 +79,36 @@
       sessionsStore.bumpUpdated(id);
     });
 
-    eventSource.addEventListener('error_event', (e) => {
+    eventSource.addEventListener('agent_event', (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'agent_spawned') {
+        agentRuns = [...agentRuns, {
+          id: data.agent_id,
+          task: data.task,
+          status: 'running',
+          steps: [],
+        }];
+      } else if (data.type === 'agent_complete') {
+        agentRuns = agentRuns.map(r =>
+          r.id === data.agent_run_id
+            ? { ...r, status: data.result ? 'complete' : 'error', result: data.result, total_steps: data.total_steps }
+            : r
+        );
+      }
+      scrollToBottom();
+    });
+
+    eventSource.addEventListener('agent_log', (e) => {
+      const data = JSON.parse(e.data);
+      agentRuns = agentRuns.map(r =>
+        r.id === data.agent_run_id
+          ? { ...r, steps: [...r.steps, data] }
+          : r
+      );
+      scrollToBottom();
+    });
+
+    eventSource.addEventListener('error_event', () => {
       streaming = false;
     });
 
@@ -96,18 +137,19 @@
     if (idx >= 0) {
       messageList[idx] = { ...messageList[idx], content };
     }
-    scrollToBottom();
+    scrollToBottom(true);
   }
 
   async function sendMessage(content: string) {
     if (streaming) return;
     streaming = true;
     error = null;
+    agentRuns = [];
+    autoScroll = true;
 
     try {
       const assistantMsg = await messagesApi.send(sessionId, content);
 
-      // Add both messages locally without re-fetching the full list
       const userMsg: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -117,14 +159,15 @@
       messageList = [...messageList, userMsg, { ...assistantMsg, content: '' }];
 
       await tick();
-      scrollToBottom();
+      scrollToBottom(true);
     } catch (e) {
       streaming = false;
       error = 'Failed to send message';
     }
   }
 
-  function scrollToBottom() {
+  function scrollToBottom(force = false) {
+    if (!force && !autoScroll) return;
     tick().then(() => {
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
@@ -137,24 +180,25 @@
 
 <div class="flex flex-col h-full">
   <!-- Messages area -->
-  <div bind:this={scrollEl} class="flex-1 overflow-y-auto px-4 py-6">
+  <div bind:this={scrollEl} onscroll={onScroll} class="flex-1 overflow-y-auto px-4 py-6">
     <div class="max-w-3xl mx-auto">
       {#if loading}
         <div class="flex justify-center py-12">
-          <div class="w-5 h-5 border-2 border-[#7c6ff7] border-t-transparent rounded-full animate-spin"></div>
+          <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
         </div>
       {:else if error}
         <div class="text-center py-12">
-          <p class="text-red-400 text-sm">{error}</p>
+          <p class="text-danger text-sm">{error}</p>
         </div>
       {:else if messageList.length === 0}
         <div class="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <p class="text-[#555] text-sm">Send a message to start the conversation</p>
+          <p class="text-text-faint text-sm">Send a message to start the conversation</p>
         </div>
       {:else}
         {#each messageList as message (message.id)}
           <MessageBubble {message} />
         {/each}
+        <AgentRunPanel runs={agentRuns} />
       {/if}
     </div>
   </div>
@@ -164,6 +208,6 @@
     onsubmit={sendMessage}
     disabled={loading}
     {streaming}
-    onstop={() => { streaming = false; closeSSE(); connectSSE(sessionId); }}
+    onstop={() => { streaming = false; }}
   />
 </div>
