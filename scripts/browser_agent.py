@@ -91,7 +91,13 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
         return {"success": False, "error": str(e)}
 
     use_cloud = os.environ.get("BROWSER_USE_CLOUD", "").lower() in ("1", "true", "yes")
-    browser_profile = BrowserProfile(use_cloud=use_cloud, headless=headless if not use_cloud else True)
+    profile_kwargs: dict = {"use_cloud": use_cloud, "headless": headless if not use_cloud else True}
+    if not use_cloud:
+        # Give each parallel agent its own isolated profile dir to avoid Chromium lock conflicts
+        import tempfile
+        profile_dir = tempfile.mkdtemp(prefix="bu_agent_")
+        profile_kwargs["user_data_dir"] = Path(profile_dir)
+    browser_profile = BrowserProfile(**profile_kwargs)
     agent = Agent(task=task, llm=llm, browser_profile=browser_profile)
 
     async def on_step_end(agent: "Agent") -> None:

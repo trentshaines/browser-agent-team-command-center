@@ -21,7 +21,7 @@
 
   function submit() {
     const trimmed = value.trim();
-    if (!trimmed || disabled || streaming) return;
+    if (!trimmed || disabled) return;
     onsubmit(trimmed);
     value = '';
     if (textarea) {
@@ -68,7 +68,7 @@
           'disabled:opacity-50 disabled:pointer-events-none'
         )}
       ></textarea>
-      {#if streaming && onstop}
+      {#if streaming && !value.trim() && onstop}
         <Button
           variant="ghost"
           onclick={onstop}
@@ -82,12 +82,12 @@
           onclick={submit}
           disabled={!value.trim() || disabled}
           class="w-8 h-8 rounded-lg shrink-0 mb-0.5 p-0"
-          title="Send"
+          title={streaming ? 'Interrupt and send' : 'Send'}
         >
           <SendIcon size={14} />
         </Button>
       {/if}
     </div>
-    <p class="text-xs text-text-faint text-center mt-2">{streaming ? 'Waiting for response · Esc to stop' : 'Enter to send · Shift+Enter for newline'}</p>
+    <p class="text-xs text-text-faint text-center mt-2">{streaming ? 'Type to interrupt and reprompt · Esc to stop' : 'Enter to send · Shift+Enter for newline'}</p>
   </div>
 </div>
