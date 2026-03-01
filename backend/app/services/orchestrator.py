@@ -61,7 +61,7 @@ async def _run_with_sdk(
     settings,
 ) -> None:
     import os
-    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
+    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition
 
     # The SDK spawns a claude CLI subprocess. If CLAUDECODE is set (backend was
     # started inside a Claude Code terminal), the subprocess tries to connect to
@@ -97,107 +97,6 @@ The browser runs headlessly and streams screenshots back to the user in real tim
 Write specific, action-oriented tasks. Include the exact URL when known.
 Return the JSON result from the script exactly as-is."""
 
-    # Correlation state captured by hook closures
-    pending_tasks: dict[str, str] = {}      # tool_use_id -> task text
-    active_runs: dict[str, uuid.UUID] = {}  # sdk_agent_id -> AgentRun.id
-
-    async def on_subagent_start(hook_input, tool_use_id: str | None, context) -> dict:
-        """Publish agent_spawned SSE immediately; persist AgentRun in background task."""
-        sdk_id = hook_input.get("agent_id", "") if hasattr(hook_input, "get") else ""
-        task_text = pending_tasks.get(tool_use_id or "", "browser task")
-        agent_run_id = uuid.uuid4()
-        active_runs[sdk_id] = agent_run_id
-
-        # SSE is in-memory — safe to await inline
-        await sse.publish(session_id_str, "agent_event", {
-            "type": "agent_spawned",
-            "agent_id": str(agent_run_id),
-            "task": task_text,
-        })
-
-        # DB insert fire-and-forget so we don't block the SDK subprocess stream
-        async def _insert():
-            async with AsyncSessionLocal() as hook_db:
-                try:
-                    hook_db.add(AgentRun(
-                        id=agent_run_id,
-                        session_id=uuid.UUID(session_id_str),
-                        message_id=message_id,
-                        task=task_text,
-                        status=AgentRunStatus.RUNNING,
-                        started_at=datetime.now(timezone.utc),
-                    ))
-                    await hook_db.commit()
-                except Exception:
-                    logger.warning("AgentRun insert failed for %s", sdk_id, exc_info=True)
-        asyncio.create_task(_insert())
-        return {}
-
-    async def on_subagent_stop(hook_input, tool_use_id: str | None, context) -> dict:
-        """Parse transcript and publish SSE; persist logs in background task."""
-        sdk_id = hook_input.get("agent_id", "") if hasattr(hook_input, "get") else ""
-        agent_run_id = active_runs.get(sdk_id)
-        transcript_path = hook_input.get("agent_transcript_path") if hasattr(hook_input, "get") else None
-
-        async def _process():
-            messages = []
-            if transcript_path:
-                try:
-                    messages = await asyncio.to_thread(_load_transcript, transcript_path)
-                except Exception:
-                    logger.warning("Failed to load transcript from %s", transcript_path, exc_info=True)
-
-            steps = _extract_browser_steps(messages)
-            final = _extract_final_result(messages)
-
-            # SSE events (in-memory, safe)
-            for step in steps:
-                await sse.publish(session_id_str, "agent_log", {
-                    "agent_run_id": str(agent_run_id),
-                    **{k: v for k, v in step.items() if k != "type"},
-                })
-            await sse.publish(session_id_str, "agent_event", {
-                "type": "agent_complete",
-                "agent_run_id": str(agent_run_id),
-                "result": final.get("result") if final else None,
-                "total_steps": len(steps),
-            })
-
-            # DB persistence — separate session
-            async with AsyncSessionLocal() as hook_db:
-                try:
-                    for step in steps:
-                        hook_db.add(AgentRunLog(
-                            agent_run_id=agent_run_id,
-                            step=step.get("step", 0),
-                            url=step.get("url"),
-                            action_type=step.get("action_type"),
-                            action_params=step.get("action_params"),
-                            thought=step.get("thought"),
-                            evaluation=step.get("evaluation"),
-                            memory=step.get("memory"),
-                            extracted_content=step.get("extracted_content"),
-                            success=step.get("success"),
-                            error=step.get("error"),
-                            step_start_time=step.get("step_start_time"),
-                            step_end_time=step.get("step_end_time"),
-                            duration_seconds=step.get("duration_seconds"),
-                        ))
-                    result_row = await hook_db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
-                    run = result_row.scalar_one_or_none()
-                    if run:
-                        run.status = AgentRunStatus.COMPLETE if (final and final.get("success")) else AgentRunStatus.ERROR
-                        run.result = final.get("result") if final else None
-                        run.error = final.get("error") if final else None
-                        run.completed_at = datetime.now(timezone.utc)
-                    await hook_db.commit()
-                except Exception:
-                    logger.warning("AgentRun update failed for %s", sdk_id, exc_info=True)
-                    await hook_db.rollback()
-
-        asyncio.create_task(_process())
-        return {}
-
     full_response = ""
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
 
@@ -222,13 +121,11 @@ Return the JSON result from the script exactly as-is."""
                             tools=["Bash"],
                         )
                     },
-                    hooks={
-                        "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
-                        "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
-                    },
-                    # Exclude user-level settings so ~/.claude/ hooks (e.g. OMC) don't
-                    # fire inside the subprocess and crash with "Stream closed".
-                    # API key comes from ANTHROPIC_API_KEY env var, so this is safe.
+                    # NOTE: SDK hooks (SubagentStart/SubagentStop) require bidirectional
+                    # control stream communication between bun subprocess and Python.
+                    # When the subprocess calls back via sendRequest, it fails with
+                    # "Stream closed" crashing the agent. Hooks are disabled until we
+                    # have a reliable out-of-band mechanism (e.g. polling transcript).
                     setting_sources=["project", "local"],
                 ),
             ):
