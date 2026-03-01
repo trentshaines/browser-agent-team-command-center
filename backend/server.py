@@ -328,7 +328,7 @@ async def narrate_agent(req: NarrateRequest):
 async def respond(
     task_id: str,
     agent_id: str,
-    prompt: str = Form(...),
+    prompt: str = Form(""),
     file: UploadFile | None = File(None),
 ):
     """Respond to a paused agent. Empty prompt = unpause and continue.
