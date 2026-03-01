@@ -55,10 +55,22 @@ export class ApiError extends Error {
 }
 
 // Auth
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  profile_image?: string;
+  is_admin: boolean;
+}
+
 export const auth = {
-  me: () => request<{ id: string; email: string; username: string; profile_image?: string }>('/auth/me'),
+  me: () => request<User>('/auth/me'),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   googleUrl: () => `${BASE}/auth/google`,
+  googleCallback: (code: string) => request<{ access_token: string; refresh_token: string; token_type: string }>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  }),
 };
 
 // Sessions

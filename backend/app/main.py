@@ -9,6 +9,10 @@ from app.routers import auth, sessions, messages, internal
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import os
+    s = get_settings()
+    if s.aws_bearer_token_bedrock:
+        os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", s.aws_bearer_token_bedrock)
     yield
 
 

@@ -16,21 +16,16 @@
 
 :root {
   color-scheme: light;
-  /* Background — warm off-white like Claude */
-  --background: #f5f4f0;
-  --surface: #eeece7;
-  --surface-hover: #e5e2db;
-  /* Borders */
-  --border: #d4cfc7;
-  --border-subtle: #dedad3;
-  /* Text */
-  --text: #1a1916;
-  --text-muted: #6b6760;
-  --text-faint: #a09c97;
-  /* Accent — Claude orange */
-  --accent: #c77b35;
-  --accent-hover: #b06a28;
-  /* Danger */
+  --background: #faf8f5;
+  --surface: #f3f0ea;
+  --surface-hover: #ebe6de;
+  --border: #d9d2c8;
+  --border-subtle: #e3ddd5;
+  --text: #1c1a17;
+  --text-muted: #6e6257;
+  --text-faint: #a89e94;
+  --accent: #a05070;
+  --accent-hover: #843d5b;
   --danger: #dc2626;
 }
 

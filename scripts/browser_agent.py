@@ -63,10 +63,13 @@ def _emit(data: dict) -> None:
 
 async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
     """POST a screenshot frame to the FastAPI internal endpoint."""
+    backend_url = os.environ.get("BACKEND_URL", "http://localhost:8000")
+    token = os.environ.get("INTERNAL_API_TOKEN", "")
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             await client.post(
-                "http://localhost:8000/internal/agent-frame",
+                f"{backend_url}/internal/agent-frame",
+                headers={"X-Internal-Token": token},
                 json={"session_id": session_id, "agent_id": agent_id, "step": step, "url": url, "screenshot": screenshot_b64},
             )
     except Exception:

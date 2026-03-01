@@ -164,7 +164,10 @@
     });
 
     eventSource.onerror = () => {
-      // SSE reconnects automatically; ignore transient errors
+      if (eventSource?.readyState === EventSource.CLOSED) {
+        streaming = false;
+        error = 'Connection lost. Refresh to reconnect.';
+      }
     };
   }
 

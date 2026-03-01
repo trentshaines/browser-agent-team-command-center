@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { authStore } from '$lib/stores/auth';
+  import { auth } from '$lib/api';
 
   let error = $state<string | null>(null);
 
@@ -14,17 +15,7 @@
     }
 
     try {
-      const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
-      const res = await fetch(`${BASE}/auth/google`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-
-      if (!res.ok) throw new Error('Auth failed');
-
-      const data = await res.json();
+      await auth.googleCallback(code);
       await authStore.init();
       goto('/chat', { replaceState: true });
     } catch (e) {

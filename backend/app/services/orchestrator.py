@@ -43,20 +43,12 @@ async def run_turn(
     db: AsyncSession,
 ) -> None:
     """
-    Run one orchestrator turn. Streams SSE events to the session.
-    Uses Claude SDK if available, otherwise falls back to direct Anthropic API.
+    Run one orchestrator turn using the Claude Agent SDK with real browser agents.
+    Streams SSE events to the session.
     """
     settings = get_settings()
     session_id_str = str(session_id)
-
-    try:
-        await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
-    except ImportError:
-        logger.info("claude_agent_sdk not available, falling back to direct API")
-        if settings.llm_provider == "bedrock":
-            await _run_with_bedrock(session_id_str, assistant_message_id, history, db, settings)
-        else:
-            await _run_with_anthropic(session_id_str, assistant_message_id, history, db, settings)
+    await _run_with_sdk(session_id_str, assistant_message_id, history, db, settings)
 
 
 async def _run_with_sdk(
@@ -66,7 +58,16 @@ async def _run_with_sdk(
     db: AsyncSession,
     settings,
 ) -> None:
+    import os
     from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
+
+    # The SDK spawns a claude CLI subprocess. If CLAUDECODE is set (backend was
+    # started inside a Claude Code terminal), the subprocess tries to connect to
+    # the parent session stream, which is closed, causing it to misbehave and
+    # output plain-text fake tool calls instead of using the Task tool. Unset it
+    # for the duration of this call.
+    _old_claudecode = os.environ.pop("CLAUDECODE", None)
+    logger.info("_run_with_sdk: CLAUDECODE was %s", "set" if _old_claudecode else "unset")
 
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a visible browser.
 
@@ -173,32 +174,57 @@ Return the JSON result from the script exactly as-is."""
 
     full_response = ""
 
-    async for event in query(
-        prompt=_build_prompt(history),
-        options=ClaudeAgentOptions(
-            system_prompt=SYSTEM_PROMPT,
-            allowed_tools=["Task"],
-            permission_mode="bypassPermissions",
-            agents={
-                "browser-agent": AgentDefinition(
-                    description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",
-                    prompt=BROWSER_AGENT_PROMPT,
-                    tools=["Bash"],
-                )
-            },
-            hooks={
-                "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
-                "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
-                "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
-            },
-        ),
-    ):
-        if hasattr(event, "text") and event.text:
-            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
-            full_response += event.text
-        elif hasattr(event, "thinking") and event.thinking:
-            await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
+    try:
+        async for event in query(
+            prompt=_build_prompt(history),
+            options=ClaudeAgentOptions(
+                system_prompt=SYSTEM_PROMPT,
+                allowed_tools=["Task"],
+                permission_mode="bypassPermissions",
+                agents={
+                    "browser-agent": AgentDefinition(
+                        description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",
+                        prompt=BROWSER_AGENT_PROMPT,
+                        tools=["Bash"],
+                    )
+                },
+                hooks={
+                    "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
+                    "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
+                    "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
+                },
+            ),
+        ):
+            if hasattr(event, "text") and event.text:
+                await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
+                full_response += event.text
+            elif hasattr(event, "thinking") and event.thinking:
+                await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
 
+        await _save_and_complete(session_id_str, message_id, full_response, db)
+    finally:
+        if _old_claudecode is not None:
+            os.environ["CLAUDECODE"] = _old_claudecode
+
+
+async def _stream_with_client(
+    client,
+    model: str,
+    session_id_str: str,
+    message_id: uuid.UUID,
+    history: list[dict],
+    db: AsyncSession,
+) -> None:
+    full_response = ""
+    async with client.messages.stream(
+        model=model,
+        max_tokens=4096,
+        system=SYSTEM_PROMPT,
+        messages=history,
+    ) as stream:
+        async for text in stream.text_stream:
+            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
+            full_response += text
     await _save_and_complete(session_id_str, message_id, full_response, db)
 
 
@@ -210,21 +236,8 @@ async def _run_with_anthropic(
     settings,
 ) -> None:
     import anthropic
-
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    full_response = ""
-
-    async with client.messages.stream(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=history,
-    ) as stream:
-        async for text in stream.text_stream:
-            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
-            full_response += text
-
-    await _save_and_complete(session_id_str, message_id, full_response, db)
+    await _stream_with_client(client, "claude-sonnet-4-6", session_id_str, message_id, history, db)
 
 
 async def _run_with_bedrock(
@@ -234,27 +247,9 @@ async def _run_with_bedrock(
     db: AsyncSession,
     settings,
 ) -> None:
-    import os
     import anthropic
-
-    # Ensure botocore picks up the Bedrock API key for bearer token auth
-    if settings.aws_bearer_token_bedrock:
-        os.environ.setdefault("AWS_BEARER_TOKEN_BEDROCK", settings.aws_bearer_token_bedrock)
-
     client = anthropic.AsyncAnthropicBedrock(aws_region=settings.aws_region)
-    full_response = ""
-
-    async with client.messages.stream(
-        model="us.anthropic.claude-sonnet-4-6",
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        messages=history,
-    ) as stream:
-        async for text in stream.text_stream:
-            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": text})
-            full_response += text
-
-    await _save_and_complete(session_id_str, message_id, full_response, db)
+    await _stream_with_client(client, "us.anthropic.claude-sonnet-4-6", session_id_str, message_id, history, db)
 
 
 async def _save_and_complete(
@@ -308,7 +303,7 @@ def _parse_browser_steps(transcript_path: str | None) -> list[dict]:
                             except json.JSONDecodeError:
                                 pass
     except Exception:
-        pass
+        logger.warning("Failed to parse browser steps from %s", transcript_path, exc_info=True)
     return steps
 
 
@@ -340,5 +335,5 @@ def _parse_final_result(transcript_path: str | None) -> dict | None:
                             except json.JSONDecodeError:
                                 pass
     except Exception:
-        pass
+        logger.warning("Failed to parse final result from %s", transcript_path, exc_info=True)
     return None

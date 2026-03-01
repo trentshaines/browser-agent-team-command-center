@@ -1,12 +1,5 @@
 import { writable } from 'svelte/store';
-import { auth as authApi, ApiError } from '$lib/api';
-
-interface User {
-  id: string;
-  email: string;
-  username: string;
-  profile_image?: string;
-}
+import { auth as authApi, type User, ApiError } from '$lib/api';
 
 interface AuthState {
   user: User | null;

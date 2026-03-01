@@ -1,4 +1,5 @@
 import uuid
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +12,23 @@ from app.models.user import User
 from app.routers.auth import get_current_user_required
 from app.schemas.session import SessionCreate, SessionRead, SessionUpdate
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+async def get_owned_session(
+    session_id: uuid.UUID,
+    user: Annotated[User, Depends(get_current_user_required)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Session:
+    result = await db.execute(
+        select(Session).where(Session.id == session_id, Session.user_id == user.id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
 
 
 @router.get("", response_model=list[SessionRead])
@@ -41,47 +58,24 @@ async def create_session(
 
 @router.get("/{session_id}", response_model=SessionRead)
 async def get_session(
-    session_id: uuid.UUID,
-    user: Annotated[User, Depends(get_current_user_required)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[Session, Depends(get_owned_session)],
 ):
-    result = await db.execute(
-        select(Session).where(Session.id == session_id, Session.user_id == user.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
     return session
 
 
 @router.patch("/{session_id}", response_model=SessionRead)
 async def update_session(
-    session_id: uuid.UUID,
     data: SessionUpdate,
-    user: Annotated[User, Depends(get_current_user_required)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    session: Annotated[Session, Depends(get_owned_session)],
 ):
-    result = await db.execute(
-        select(Session).where(Session.id == session_id, Session.user_id == user.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
     session.title = data.title
     return session
 
 
 @router.delete("/{session_id}")
 async def delete_session(
-    session_id: uuid.UUID,
-    user: Annotated[User, Depends(get_current_user_required)],
+    session: Annotated[Session, Depends(get_owned_session)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    result = await db.execute(
-        select(Session).where(Session.id == session_id, Session.user_id == user.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
     await db.delete(session)
     return {"ok": True}
