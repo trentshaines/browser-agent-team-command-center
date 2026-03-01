@@ -14,3 +14,6 @@ export const agentBrowserWindowTileConfig = {
 } as const;
 
 export type AgentBrowserWindowTileConfig = typeof agentBrowserWindowTileConfig;
+
+/** Common status values for the tile status bar. Any string is allowed. */
+export type AgentTileStatus = 'Done' | 'In-Progress' | 'Blocked' | (string & {});

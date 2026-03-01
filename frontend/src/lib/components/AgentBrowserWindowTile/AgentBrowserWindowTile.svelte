@@ -1,6 +1,7 @@
 <script lang="ts">
   import { cn } from '$lib/utils';
   import { agentBrowserWindowTileConfig } from './config';
+  import AgentTileStatusBar from './AgentTileStatusBar.svelte';
 
   import defaultTileImage from '$lib/assets/AgentBrowserWindowTile.png';
 
@@ -15,12 +16,18 @@
     imageClass = '',
     /** Whether the tile can be dragged to reposition. */
     draggable = true,
+    /** Status label in the status bar (e.g. "Done", "In-Progress", "Blocked"). */
+    status = '—',
+    /** Agent name shown in the status bar (e.g. "James Agent"). */
+    agentName = '—',
   }: {
     src?: string;
     alt?: string;
     class?: string;
     imageClass?: string;
     draggable?: boolean;
+    status?: string;
+    agentName?: string;
   } = $props();
 
   const { borderRadius, aspectRatio, objectFit } = agentBrowserWindowTileConfig;
@@ -73,20 +80,28 @@
   onpointercancel={onPointerUp}
 >
   <div
-    class={cn(
-      'overflow-hidden border border-border bg-background touch-none select-none',
-      borderRadius,
-      isDragging && 'z-10 ring-2 ring-accent/40'
-    )}
+    class={cn('touch-none select-none flex flex-col overflow-hidden', borderRadius)}
     style="transform: translate({dragOffset.x}px, {dragOffset.y}px);"
   >
-    <img
-      {src}
-      {alt}
-      class={cn('size-full pointer-events-none', objectFit, imageClass)}
-      loading="lazy"
-      decoding="async"
-      draggable="false"
-    />
+    <AgentTileStatusBar {status} {agentName} />
+    <div
+      class={cn(
+        'overflow-hidden flex-1 min-h-0 rounded-2xl',
+        'border border-border',
+        'bg-(--surface)/80 dark:bg-black/40 backdrop-blur-xl',
+        'shadow-[0_4px_24px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.5)]',
+        'ring-1 ring-black/[0.06] dark:ring-white/10',
+        isDragging && 'z-10 ring-2 ring-accent/40'
+      )}
+    >
+      <img
+        {src}
+        {alt}
+        class={cn('size-full pointer-events-none', objectFit, imageClass)}
+        loading="lazy"
+        decoding="async"
+        draggable="false"
+      />
+    </div>
   </div>
 </div>

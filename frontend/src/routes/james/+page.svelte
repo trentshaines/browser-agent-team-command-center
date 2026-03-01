@@ -82,9 +82,21 @@
         <div
           class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto"
         >
-          <AgentBrowserWindowTile class="w-full" />
-          <AgentBrowserWindowTile class="w-full" />
-          <AgentBrowserWindowTile class="w-full" />
+          <AgentBrowserWindowTile
+            class="w-full"
+            status="Done"
+            agentName="James Agent"
+          />
+          <AgentBrowserWindowTile
+            class="w-full"
+            status="In-Progress"
+            agentName="Kelly Agent"
+          />
+          <AgentBrowserWindowTile
+            class="w-full"
+            status="Blocked"
+            agentName="Sam Agent"
+          />
         </div>
       </section>
 
