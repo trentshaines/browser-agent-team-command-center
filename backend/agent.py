@@ -219,6 +219,12 @@ class BrowserAgent:
 
 	async def retry(self, follow_up_prompt: str) -> AsyncIterator[TaskStepView]:
 		"""Run a follow-up task on the same browser session."""
+		# Stop any existing task on this session so the SDK allows a new one
+		if self.task_id:
+			try:
+				await self.client.tasks.update_task(self.task_id, action="stop")
+			except Exception:
+				pass
 		self.state = AgentState.RUNNING
 		self._log(LogAction.RETRY, follow_up_prompt)
 		self._emit(EventType.AGENT_STARTED, {
