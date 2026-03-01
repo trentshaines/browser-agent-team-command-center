@@ -306,9 +306,10 @@
         const existing = liveAgentRuns.find(r => r.id === data.agent_id)
           || persistedAgentRuns.find(r => r.clientId === data.agent_id);
         if (existing) {
-          // Re-spawn: flip agent back to running
+          // Re-spawn (reprompt/retry): flip agent back to running, reuse existing tile
+          console.log('[SSE] agent re-spawn (reusing existing tile):', data.agent_id);
           liveAgentRuns = liveAgentRuns.map(r =>
-            r.id === data.agent_id ? { ...r, status: 'running' as const } : r
+            r.id === data.agent_id ? { ...r, status: 'running' as const, thinking: false } : r
           );
           const convexId = agentConvexIds.get(data.agent_id);
           if (convex && convexId) {
