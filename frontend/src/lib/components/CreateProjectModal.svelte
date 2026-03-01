@@ -272,8 +272,12 @@ Determining optimal agent count and role boundaries...`;
         {:else if stage === 'planning'}
           <div class="p-5 flex flex-col gap-4">
             <!-- Streaming thinking block -->
-            <div class="rounded-xl bg-surface-hover border border-border-subtle px-4 py-3 font-mono text-[11px] text-text-muted leading-relaxed min-h-[96px] whitespace-pre-wrap">
-              {thinkingText}<span class="inline-block w-px h-3 bg-accent/70 animate-pulse ml-px align-middle"></span>
+            <div class="rounded-xl bg-indigo-50 border border-indigo-200 px-4 py-3 min-h-[96px]">
+              <div class="flex items-center gap-1.5 mb-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                <span class="text-[10px] font-medium text-indigo-400 uppercase tracking-widest">Thinking</span>
+              </div>
+              <p class="font-mono text-xs text-indigo-700 leading-relaxed whitespace-pre-wrap">{thinkingText}<span class="inline-block w-0.5 h-3.5 bg-indigo-400 animate-pulse ml-px align-middle"></span></p>
             </div>
 
             <!-- Agent cards spawning in -->
