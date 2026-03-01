@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Annotated
 
+import sentry_sdk
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
@@ -91,6 +92,7 @@ async def send_message(
                 )
                 await bg_db.commit()
             except Exception as exc:
+                sentry_sdk.capture_exception(exc)
                 logger.exception("Orchestrator failed for session %s", session_id)
                 error_text = f"_Something went wrong: {exc}_"
                 # Persist error into the assistant message so it's visible after reload

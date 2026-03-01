@@ -4,6 +4,8 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+import sentry_sdk
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -190,9 +192,10 @@ Return the JSON result from the script exactly as-is."""
                     full_response = event.result
 
         await _save_and_complete(session_id_str, message_id, full_response, db)
-    except TimeoutError:
+    except TimeoutError as exc:
+        sentry_sdk.capture_exception(exc)
         logger.error("Orchestrator timed out (300s) for session %s", session_id_str)
-        await sse.publish(session_id_str, "error_event", {"message_id": str(message_id)})
+        await sse.publish(session_id_str, "error_event", {"message_id": str(message_id), "error": "Orchestrator timed out after 300s"})
     finally:
         if _old_claudecode is not None:
             os.environ["CLAUDECODE"] = _old_claudecode
