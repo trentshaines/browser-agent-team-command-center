@@ -114,6 +114,20 @@ export const messages = {
   streamUrl: (sessionId: string) => `${BASE}/sessions/${sessionId}/stream`,
 };
 
+// Tasks — direct agent spawn, bypasses Claude's planning step
+export interface AgentSpec {
+  name: string;
+  task: string;
+}
+
+export const tasks = {
+  spawn: (sessionId: string, prompt: string, agents: AgentSpec[]) =>
+    request<Message>(`/sessions/${sessionId}/task`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt, agents }),
+    }),
+};
+
 // Agent runs
 export interface AgentRunStep {
   step: number;

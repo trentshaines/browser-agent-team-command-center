@@ -10,7 +10,7 @@ from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from app.config import get_settings
-from app.routers import auth, sessions, messages, internal
+from app.routers import auth, sessions, messages, internal, tasks
 
 settings = get_settings()
 
@@ -64,6 +64,7 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(messages.router, prefix="/sessions", tags=["messages"])
 app.include_router(internal.router, prefix="/internal", tags=["internal"])
+app.include_router(tasks.router, prefix="/sessions", tags=["tasks"])
 
 
 @app.get("/health")

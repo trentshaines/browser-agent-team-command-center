@@ -4,13 +4,15 @@
   import { FloatingChatWidget } from "$lib/chat";
   import AgentTiles from "$lib/components/AgentTiles.svelte";
   import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
-  import { auth, messages as messagesApi } from '$lib/api';
+  import { auth, messages as messagesApi, tasks } from '$lib/api';
+  import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
 
   let authenticated = $state(false);
   let authError = $state<string | null>(null);
   let createModalOpen = $state(false);
+  let spawnModalOpen = $state(false);
   let sessionId = $state<string | null>(null);
 
   onMount(async () => {
@@ -169,6 +171,22 @@
     if (id) connectSSE(id);
   }
 
+  async function handleSpawn(name: string, task: string) {
+    if (!sessionId) return;
+    try {
+      const assistantMsg = await tasks.spawn(sessionId, task, [{ name, task }]);
+      const userMsg: WidgetMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: task,
+        created_at: new Date().toISOString(),
+      };
+      messageList = [...messageList, userMsg, { ...assistantMsg, content: '' }];
+    } catch (e) {
+      console.error('Failed to spawn agent:', e);
+    }
+  }
+
   async function onProjectLaunched(id: string, goal: string) {
     // Reset state for new session
     sessionId = id;
@@ -246,6 +264,7 @@
     onSend={sendMessage}
     onStop={stopStreaming}
     disabled={!sessionId}
+    onSpawnAgent={sessionId ? () => (spawnModalOpen = true) : undefined}
   />
 </div>
 
@@ -253,5 +272,11 @@
   isOpen={createModalOpen}
   onClose={() => (createModalOpen = false)}
   onLaunch={onProjectLaunched}
+/>
+
+<SpawnAgentModal
+  isOpen={spawnModalOpen}
+  onClose={() => (spawnModalOpen = false)}
+  onSpawn={handleSpawn}
 />
 {/if}
