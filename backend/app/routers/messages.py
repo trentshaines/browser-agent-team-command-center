@@ -64,6 +64,11 @@ async def send_message(
 
     assistant_msg_id = assistant_msg.id
 
+    # Commit immediately so the connection is released before background task starts.
+    # Without this, get_db cleanup may fail (especially with Neon pooler) and
+    # prevent the background task from running.
+    await db.commit()
+
     # Build conversation history in-memory (no second DB query needed)
     history = [
         {"role": m.role, "content": m.content}
@@ -72,7 +77,10 @@ async def send_message(
     ]
     history.append({"role": "user", "content": data.content})
 
+    logger.info("Registering orchestrator background task for session %s, message %s", session_id, assistant_msg_id)
+
     async def run_orchestrator():
+        logger.info("Background orchestrator started for session %s, message %s", session_id, assistant_msg_id)
         async with AsyncSessionLocal() as bg_db:
             try:
                 await run_turn(

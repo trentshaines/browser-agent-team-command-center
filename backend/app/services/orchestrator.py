@@ -197,6 +197,7 @@ Return the JSON result from the script exactly as-is."""
     def _on_stderr(line: str) -> None:
         logger.warning("Claude subprocess stderr: %s", line.rstrip())
 
+    logger.info("_run_with_sdk: starting SDK query for session %s", session_id_str)
     try:
         async with asyncio.timeout(300):  # 5-minute hard timeout
             async for event in query(
