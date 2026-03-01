@@ -63,7 +63,8 @@ def _emit(data: dict) -> None:
 
 async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
     """POST a screenshot frame to the FastAPI internal endpoint."""
-    backend_url = os.environ.get("BACKEND_URL", "http://localhost:8000")
+    port = os.environ.get("PORT", "8000")
+    backend_url = os.environ.get("BACKEND_URL", f"http://localhost:{port}")
     token = os.environ.get("INTERNAL_API_TOKEN", "")
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
