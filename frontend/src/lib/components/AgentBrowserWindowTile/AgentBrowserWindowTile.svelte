@@ -67,8 +67,17 @@
   // — Expand modal —
   let isOpen = $state(false);
   let chatScrollEl = $state<HTMLDivElement | null>(null);
+  let modalOrigin = $state('50% 50%');
 
-  function openExpand() { isOpen = true; }
+  function openExpand() {
+    if (containerEl) {
+      const r = containerEl.getBoundingClientRect();
+      const dx = Math.round(r.left + r.width / 2 - window.innerWidth / 2);
+      const dy = Math.round(r.top + r.height / 2 - window.innerHeight / 2);
+      modalOrigin = `calc(50% + ${dx}px) calc(50% + ${dy}px)`;
+    }
+    isOpen = true;
+  }
   function closeExpand() { isOpen = false; }
 
   // Escape key + body scroll lock while modal is open
@@ -228,6 +237,7 @@
       in:scale={{ start: 0.93, duration: 420, easing: quintOut }}
       out:scale={{ start: 0.93, duration: 220 }}
       class="relative"
+      style="transform-origin: {modalOrigin}"
     >
       <!-- Glass halo — sits behind the modal, adds the frosted outer ring -->
       <div
