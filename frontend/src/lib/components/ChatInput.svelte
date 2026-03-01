@@ -21,7 +21,7 @@
 
   function submit() {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || streaming) return;
     onsubmit(trimmed);
     value = '';
     if (textarea) {
@@ -88,6 +88,6 @@
         </Button>
       {/if}
     </div>
-    <p class="text-xs text-text-faint text-center mt-2">Enter to send · Shift+Enter for newline{streaming ? ' · Esc to stop' : ''}</p>
+    <p class="text-xs text-text-faint text-center mt-2">{streaming ? 'Waiting for response · Esc to stop' : 'Enter to send · Shift+Enter for newline'}</p>
   </div>
 </div>
