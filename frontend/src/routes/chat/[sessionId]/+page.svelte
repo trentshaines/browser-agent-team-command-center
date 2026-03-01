@@ -380,17 +380,6 @@
       </div>
     </div>
 
-    <!-- Agent tiles: inline screenshot strip -->
-    {#if Object.keys(agentFrames).length > 0}
-      <AgentTiles frames={agentFrames} />
-    {:else if agentRuns.some(r => r.status === 'running')}
-      <div class="border-t border-border-subtle bg-surface px-4 py-2 flex items-center gap-2 shrink-0">
-        <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse shrink-0"></span>
-        <span class="text-xs text-text-muted">
-          {agentRuns.filter(r => r.status === 'running').length} agent{agentRuns.filter(r => r.status === 'running').length !== 1 ? 's' : ''} working…
-        </span>
-      </div>
-    {/if}
 
     <ChatInput
       onsubmit={sendMessage}
