@@ -26,6 +26,7 @@
 
   let inputValue = $state('');
   let inputEl: HTMLInputElement;
+  let scrollEl: HTMLDivElement;
 
   let chatMessages = $state<WidgetMessage[]>([
     {
@@ -36,6 +37,17 @@
       senderName: 'Kelly Agent',
     },
   ]);
+
+  function scrollToBottom() {
+    requestAnimationFrame(() => {
+      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+    });
+  }
+
+  $effect(() => {
+    chatMessages; // track any change — new messages or streaming content updates
+    scrollToBottom();
+  });
 
   onMount(() => {
     widgetTop = window.innerHeight - widgetH - 24;
@@ -93,7 +105,7 @@
     window.removeEventListener('pointercancel', onHeaderUp);
   }
 
-  function sendMessage(content: string) {
+  async function sendMessage(content: string) {
     const userMsg: WidgetMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -101,16 +113,28 @@
       created_at: new Date().toISOString(),
     };
     chatMessages = [...chatMessages, userMsg];
+
     const name = AGENT_NAMES[agentIndex % AGENT_NAMES.length];
     agentIndex += 1;
+    const fullContent = `You said: "${content}" — (widget is local-only, no backend.)`;
+    const msgId = crypto.randomUUID();
+
     const assistantMsg: WidgetMessage = {
-      id: crypto.randomUUID(),
+      id: msgId,
       role: 'assistant',
-      content: `You said: "${content}" — (widget is local-only, no backend.)`,
+      content: '',
       created_at: new Date().toISOString(),
       senderName: name,
     };
     chatMessages = [...chatMessages, assistantMsg];
+
+    // Simulate streaming: add one character at a time
+    for (let i = 0; i < fullContent.length; i++) {
+      await new Promise<void>(r => setTimeout(r, 18));
+      chatMessages = chatMessages.map(m =>
+        m.id === msgId ? { ...m, content: fullContent.slice(0, i + 1) } : m
+      );
+    }
   }
 
   function onInputKeydown(e: KeyboardEvent) {
@@ -182,6 +206,7 @@
   <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
     {#if activeTab === 'chat'}
       <div
+        bind:this={scrollEl}
         class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col bg-transparent"
       >
         {#each chatMessages as msg (msg.id)}

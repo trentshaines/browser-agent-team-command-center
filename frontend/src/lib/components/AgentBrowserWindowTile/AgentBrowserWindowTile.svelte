@@ -208,7 +208,7 @@
     draggable && (isDragging ? 'cursor-grabbing' : 'cursor-grab'),
     className
   )}
-  style="{resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px);"
+  style="{resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px); {isDragging || isResizing ? 'z-index: 9999; position: relative;' : ''}"
   role="group"
   aria-label={draggable ? 'Browser window tile, drag to move' : undefined}
   onpointerdown={onPointerDown}

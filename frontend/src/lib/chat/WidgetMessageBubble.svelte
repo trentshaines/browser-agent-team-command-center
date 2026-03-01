@@ -33,11 +33,7 @@
   );
 </script>
 
-<div
-  class="mb-4 {message.role === 'user'
-    ? 'rounded-2xl bg-surface-hover/60 px-3 py-2.5'
-    : ''}"
->
+<div class="mb-4">
   <div class="flex flex-wrap items-baseline gap-2 text-sm">
     <span class={nameColorClass}>{displayName}</span>
     <span class="text-text-faint text-xs shrink-0">{timeStr}</span>
