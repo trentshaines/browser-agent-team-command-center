@@ -23,7 +23,7 @@
     Object.entries(frames).map(([id, f]) => ({ agent_id: id, ...f }))
   );
 
-  const TILE_W = 420;
+  const TILE_W = 560;
   const CASCADE = 44; // px diagonal offset per tile
 
   function agentName(agent: { url: string | null; step: number | null }): string {
