@@ -8,7 +8,6 @@
   import AgentRunPanel, { type AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import AgentTiles from '$lib/components/AgentTiles.svelte';
   import AgentGraph from '$lib/components/AgentGraph.svelte';
-  import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
 
   let sessionId = $derived(page.params.sessionId!);
   let messageList = $state<Message[]>([]);
@@ -287,13 +286,6 @@
   }
 
   let activeTab = $state<'chat' | 'browser' | 'graph'>('chat');
-  let spawnModalOpen = $state(false);
-
-  function handleSpawn(name: string, task: string) {
-    activeTab = 'browser';
-    sendMessage(`Use a browser agent called "${name}" to complete this task: ${task}`);
-  }
-
   const liveAgentCount = $derived(
     Object.values(agentFrames).filter(f => !f.done).length
   );
@@ -375,26 +367,7 @@
       {/if}
     </button>
 
-    <!-- Spawn Agent button — aligned to the right of the tab bar -->
-    <div class="ml-auto pb-1">
-      <button
-        onclick={() => spawnModalOpen = true}
-        class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-text-faint hover:text-text hover:bg-white/30 dark:hover:bg-white/10 transition-all"
-        aria-label="Spawn new agent"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        Spawn Agent
-      </button>
-    </div>
   </div>
-
-  <SpawnAgentModal
-    isOpen={spawnModalOpen}
-    onClose={() => (spawnModalOpen = false)}
-    onSpawn={handleSpawn}
-  />
 
   <!-- Chat tab -->
   {#if activeTab === 'chat'}

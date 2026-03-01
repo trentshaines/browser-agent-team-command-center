@@ -13,10 +13,12 @@
     frames,
     fullscreen = false,
     messages = [],
+    onSpawnAgent,
   }: {
     frames: Record<string, AgentFrame>;
     fullscreen?: boolean;
     messages?: Message[];
+    onSpawnAgent?: () => void;
   } = $props();
 
   const agents = $derived(
@@ -35,12 +37,26 @@
 
 {#if agents.length > 0}
   <div class="{fullscreen ? 'h-full' : 'border-t border-border bg-surface shrink-0 h-64'} relative overflow-hidden">
-    {#if !fullscreen}
-      <div class="absolute top-2 left-4 flex items-center gap-2 z-10 pointer-events-none">
-        <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest">Windows</span>
-        <span class="text-[10px] text-text-faint">({agents.length})</span>
-      </div>
-    {/if}
+    <!-- Windows header / spawn button -->
+    <div class="absolute top-2 {fullscreen ? 'right-3' : 'left-4 right-3'} flex items-center gap-2 z-10">
+      {#if !fullscreen}
+        <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest pointer-events-none">Windows</span>
+        <span class="text-[10px] text-text-faint pointer-events-none">({agents.length})</span>
+      {/if}
+      {#if onSpawnAgent}
+        <button
+          onclick={onSpawnAgent}
+          class="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-text-faint hover:text-text hover:bg-white/30 dark:hover:bg-white/10 transition-all"
+          aria-label="Spawn new agent"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Agent
+        </button>
+      {/if}
+    </div>
+
     {#each agents as agent, i (agent.agent_id)}
       <AgentBrowserWindowTile
         src={agent.screenshot ? `data:image/jpeg;base64,${agent.screenshot}` : undefined}

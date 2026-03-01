@@ -8,11 +8,13 @@
     disabled = false,
     streaming = false,
     onstop,
+    onSpawnAgent,
   }: {
     onsubmit: (content: string) => void;
     disabled?: boolean;
     streaming?: boolean;
     onstop?: () => void;
+    onSpawnAgent?: () => void;
   } = $props();
 
   let value = $state('');
@@ -88,6 +90,20 @@
         </Button>
       {/if}
     </div>
-    <p class="text-xs text-text-faint text-center mt-2">{streaming ? 'Type to interrupt and reprompt · Esc to stop' : 'Enter to send · Shift+Enter for newline'}</p>
+    <div class="relative flex items-center justify-center mt-2">
+      {#if onSpawnAgent}
+        <button
+          type="button"
+          onclick={onSpawnAgent}
+          class="absolute left-0 flex items-center gap-1 text-xs text-text-faint hover:text-text transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Agent
+        </button>
+      {/if}
+      <p class="text-xs text-text-faint">{streaming ? 'Type to interrupt and reprompt · Esc to stop' : 'Enter to send · Shift+Enter for newline'}</p>
+    </div>
   </div>
 </div>

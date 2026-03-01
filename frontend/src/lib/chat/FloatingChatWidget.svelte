@@ -22,6 +22,8 @@
   // Header drag-to-move state
   let moveStart = $state<{ mx: number; my: number; wx: number; wy: number } | null>(null);
 
+  let { onSpawnAgent }: { onSpawnAgent?: () => void } = $props();
+
   const AGENT_NAMES = ['Kelly Agent', 'James Agent'] as const;
   let agentIndex = $state(0);
 
@@ -173,7 +175,7 @@
     <!-- Content -->
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
       {#if activeTab === 'chat'}
-        <ChatPanel messages={chatMessages} onSend={sendMessage} />
+        <ChatPanel messages={chatMessages} onSend={sendMessage} {onSpawnAgent} />
       {:else}
         <ProgressPanel />
       {/if}

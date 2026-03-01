@@ -6,10 +6,12 @@
     messages,
     onSend,
     placeholder = 'Message the team...',
+    onSpawnAgent,
   }: {
     messages: WidgetMessage[];
     onSend?: (content: string) => void;
     placeholder?: string;
+    onSpawnAgent?: () => void;
   } = $props();
 
   let inputValue = $state('');
@@ -52,6 +54,19 @@
   {#if onSend}
     <div class="shrink-0 border-t border-border-subtle/50 px-3 py-3">
       <div class="flex items-center gap-2 rounded-2xl bg-surface border border-border-subtle px-4 py-2.5 focus-within:border-border transition-colors">
+        {#if onSpawnAgent}
+          <button
+            type="button"
+            onclick={onSpawnAgent}
+            class="shrink-0 flex items-center gap-1 text-xs text-text-faint hover:text-text transition-colors pr-2 border-r border-border-subtle"
+            aria-label="Spawn new agent"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Agent
+          </button>
+        {/if}
         <input
           bind:this={inputEl}
           bind:value={inputValue}
