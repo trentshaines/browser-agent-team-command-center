@@ -60,7 +60,7 @@
 
   {#if onSend}
     <div class="shrink-0 border-t border-white/15 px-3 py-2 bg-white/5">
-      <div class="flex items-center gap-2 rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus-within:border-white/40 focus-within:bg-white/15 transition-colors">
+      <div class="relative flex items-center gap-2 rounded-xl bg-white/10 border border-white/20 px-3 py-2 focus-within:border-white/40 focus-within:bg-white/15 transition-colors">
         {#if onSpawnAgent}
           <button
             type="button"

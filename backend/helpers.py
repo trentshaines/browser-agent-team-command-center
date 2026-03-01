@@ -268,15 +268,6 @@ _TEXT_EXTENSIONS = {
 	".toml", ".ini", ".cfg", ".log", ".py", ".js", ".ts", ".sh",
 }
 
-resp = httpx.post(
-			f"{CONVEX_URL}/api/query",
-			json={"path": "files:list", "args": {}},
-			timeout=10,
-		)
-print(f"CONVEX_URL: {CONVEX_URL}")
-print(resp)
-
-
 def _fetch_convex_files() -> list[dict] | None:
 	"""Query the Convex files:list function for all uploaded files."""
 	try:

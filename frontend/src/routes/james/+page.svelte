@@ -740,7 +740,7 @@
 
   <main class="flex-1 relative z-10 overflow-hidden">
     {#if agentRuns.length > 0}
-      <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onExpandChange={(v) => (tileExpanded = v)} />
+      <AgentTiles runs={agentRuns} frames={agentFrames} fullscreen messages={messageList} onExpandChange={(v) => (tileExpanded = v)} onResumeAgent={handleResumeAgent} />
     {:else if sessionClientId}
       <div class="flex items-center justify-center h-full">
         <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>

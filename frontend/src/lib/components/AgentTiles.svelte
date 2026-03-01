@@ -17,6 +17,7 @@
     messages = [],
     onSpawnAgent,
     onExpandChange,
+    onResumeAgent,
   }: {
     runs?: AgentRun[];
     frames?: Record<string, AgentFrame>;
@@ -24,6 +25,7 @@
     messages?: Message[];
     onSpawnAgent?: () => void;
     onExpandChange?: (expanded: boolean) => void;
+    onResumeAgent?: (agentId: string) => void;
   } = $props();
 
   // Merge agentRuns with frame data — tiles appear as soon as agents spawn,
@@ -94,6 +96,7 @@
         liveUrl={agent.liveUrl}
         blockedMessage={agent.handoffMessage}
         {onExpandChange}
+        onResume={onResumeAgent ? () => onResumeAgent(agent.agent_id) : undefined}
       />
     {/each}
   </div>

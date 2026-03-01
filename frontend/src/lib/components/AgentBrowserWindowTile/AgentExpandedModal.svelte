@@ -15,6 +15,8 @@
     messages,
     modalOrigin = '50% 50%',
     liveUrl = null,
+    blockedMessage = null,
+    onResume,
     onClose,
   }: {
     isOpen: boolean;
@@ -25,8 +27,12 @@
     messages: Message[];
     modalOrigin?: string;
     liveUrl?: string | null;
+    blockedMessage?: string | null;
+    onResume?: (() => void) | undefined;
     onClose: () => void;
   } = $props();
+
+  const isBlocked = $derived(status.toLowerCase() === 'blocked');
 
   type TabId = 'chat' | 'progress';
   let activeTab = $state<TabId>('chat');
@@ -97,13 +103,31 @@
             <img {src} {alt} class="size-full object-cover" draggable="false" />
           {/if}
 
-          <!-- Agent info overlay -->
-          <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between pointer-events-none">
-            <div class="flex items-center gap-3">
-              <span class="text-white/90 text-sm font-medium">{agentName}</span>
-              <span class="text-white/60 text-xs">{status}</span>
+          <!-- Agent info overlay / blocked banner -->
+          {#if isBlocked}
+            <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-red-600/90 backdrop-blur-sm flex items-center gap-3">
+              <p class="text-white text-sm font-medium flex-1 truncate" title={blockedMessage ?? ''}>
+                {blockedMessage ?? 'Needs human help'}
+              </p>
+              {#if onResume}
+                <button
+                  type="button"
+                  class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-700 hover:bg-red-50 shadow-sm transition-all"
+                  onclick={() => onResume()}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                  Resume Agent
+                </button>
+              {/if}
             </div>
-          </div>
+          {:else}
+            <div class="absolute bottom-0 inset-x-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-between pointer-events-none">
+              <div class="flex items-center gap-3">
+                <span class="text-white/90 text-sm font-medium">{agentName}</span>
+                <span class="text-white/60 text-xs">{status}</span>
+              </div>
+            </div>
+          {/if}
 
         </div>
 

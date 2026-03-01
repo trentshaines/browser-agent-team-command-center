@@ -199,46 +199,44 @@
   }
 </script>
 
-<div class="mention-input-wrapper relative">
-  <!-- Autocomplete dropdown — positioned above the input -->
-  {#if showMenu && filtered.length > 0}
-    <div
-      bind:this={menuEl}
-      class="absolute bottom-full left-0 right-0 mb-1 rounded-lg bg-[#1e1e2e] border border-white/20 shadow-xl overflow-hidden z-50 max-h-40 overflow-y-auto"
-    >
-      {#each filtered as agent, i (agent.id)}
-        <button
-          type="button"
-          data-selected={i === selectedIdx}
-          class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors cursor-pointer
-            {i === selectedIdx ? 'bg-white/15' : 'hover:bg-white/10'}"
-          onmousedown={(e) => { e.preventDefault(); insertMention(agent); }}
-          onmouseenter={() => (selectedIdx = i)}
-        >
-          <span
-            class="w-2 h-2 rounded-full shrink-0"
-            style="background: {senderColor(agent.name)}"
-          ></span>
-          <span class="font-medium" style="color: {senderColor(agent.name)}">{agent.name}</span>
-        </button>
-      {/each}
-    </div>
-  {/if}
-
-  <!-- Editable input -->
+<!-- Autocomplete dropdown — positioned above the input row via the outer relative wrapper -->
+{#if showMenu && filtered.length > 0}
   <div
-    bind:this={editorEl}
-    contenteditable="true"
-    role="textbox"
-    aria-label={placeholder}
-    aria-multiline="false"
-    class="mention-editor flex-1 bg-transparent text-xs text-text outline-none min-h-[1.5em] max-h-20 overflow-y-auto break-words"
-    oninput={onInput}
-    onkeydown={onKeydown}
-    onpaste={onPaste}
-    data-placeholder={placeholder}
-  ></div>
-</div>
+    bind:this={menuEl}
+    class="mention-menu"
+  >
+    {#each filtered as agent, i (agent.id)}
+      <button
+        type="button"
+        data-selected={i === selectedIdx}
+        class="w-full flex items-center gap-2 px-3 py-2 text-left text-xs transition-colors cursor-pointer
+          {i === selectedIdx ? 'bg-white/50' : 'hover:bg-white/30'}"
+        onmousedown={(e) => { e.preventDefault(); insertMention(agent); }}
+        onmouseenter={() => (selectedIdx = i)}
+      >
+        <span
+          class="w-2 h-2 rounded-full shrink-0"
+          style="background: {senderColor(agent.name)}"
+        ></span>
+        <span class="font-medium" style="color: {senderColor(agent.name)}">{agent.name}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
+
+<!-- Editable input — rendered as a sibling so flex-1 works in the parent flex row -->
+<div
+  bind:this={editorEl}
+  contenteditable="true"
+  role="textbox"
+  aria-label={placeholder}
+  aria-multiline="false"
+  class="mention-editor flex-1 bg-transparent text-xs text-text outline-none min-h-[1.5em] max-h-20 overflow-y-auto break-words"
+  oninput={onInput}
+  onkeydown={onKeydown}
+  onpaste={onPaste}
+  data-placeholder={placeholder}
+></div>
 
 <style>
   .mention-editor:empty::before {
@@ -248,10 +246,32 @@
   }
 
   .mention-editor :global(.mention-tag) {
-    border-radius: 3px;
-    padding: 0 2px;
-    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 1px 4px;
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.35);
     user-select: all;
     cursor: default;
+  }
+
+  .mention-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 6px;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.12),
+      0 2px 8px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    overflow: hidden;
+    z-index: 50;
+    max-height: 10rem;
+    overflow-y: auto;
   }
 </style>

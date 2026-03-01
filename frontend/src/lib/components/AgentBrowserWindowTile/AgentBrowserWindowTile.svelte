@@ -43,6 +43,8 @@
     blockedMessage = null,
     /** Called when the expanded modal opens or closes. */
     onExpandChange,
+    /** Callback to signal the backend that the human is done and the agent can resume. */
+    onResume,
   }: {
     src?: string;
     alt?: string;
@@ -59,6 +61,7 @@
     liveUrl?: string | null;
     blockedMessage?: string | null;
     onExpandChange?: (expanded: boolean) => void;
+    onResume?: (() => void) | undefined;
   } = $props();
 
   const isBlocked = $derived(status.toLowerCase() === 'blocked');
@@ -217,6 +220,8 @@
   {messages}
   {modalOrigin}
   {liveUrl}
+  {blockedMessage}
+  {onResume}
   onClose={() => { isOpen = false; onExpandChange?.(false); }}
 />
 
@@ -287,11 +292,22 @@
             draggable="false"
           />
         {/if}
-        {#if isBlocked && blockedMessage}
-          <div class="absolute inset-x-0 bottom-0 z-20 px-3 py-2 bg-red-600/90 backdrop-blur-sm">
-            <p class="text-white text-xs font-medium leading-snug truncate" title={blockedMessage}>
-              Needs help: {blockedMessage}
+        {#if isBlocked}
+          <div class="absolute inset-x-0 bottom-0 z-20 px-3 py-2 bg-red-600/90 backdrop-blur-sm flex items-center gap-2">
+            <p class="text-white text-xs font-medium leading-snug truncate flex-1" title={blockedMessage ?? ''}>
+              {blockedMessage ?? 'Needs human help'}
             </p>
+            {#if onResume}
+              <button
+                type="button"
+                class="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-red-700 hover:bg-red-50 shadow-sm transition-all"
+                onclick={(e) => { e.stopPropagation(); onResume(); }}
+                onpointerdown={(e) => e.stopPropagation()}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+                Resume
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
