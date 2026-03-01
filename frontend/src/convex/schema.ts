@@ -46,4 +46,11 @@ export default defineSchema({
   })
     .index("by_agentRunId", ["agentRunId"])
     .index("by_agentRunId_step", ["agentRunId", "step"]),
+
+  files: defineTable({
+    storageId: v.id("_storage"),
+    name: v.string(),
+    size: v.number(),
+    type: v.string(),
+  }),
 });
