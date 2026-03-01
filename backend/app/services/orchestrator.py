@@ -83,9 +83,9 @@ async def _run_with_sdk(
 
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
-Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
+Run: uv run python scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
 
-The script is at ../scripts/browser_agent.py (one level above the backend/ working directory).
+The script is at scripts/browser_agent.py relative to the working directory.
 The browser runs headlessly and streams screenshots back to the user in real time. You can:
 - Navigate to any URL and extract text, tables, prices, listings
 - Click buttons, links, and UI elements
@@ -200,6 +200,12 @@ Return the JSON result from the script exactly as-is."""
                                                 final_result = rec
                                         except json.JSONDecodeError:
                                             pass
+
+                                    if not steps and not final_result:
+                                        logger.error(
+                                            "Agent run %s produced 0 steps. Raw output: %s",
+                                            agent_run_id, raw_content[:1000] or "<empty>",
+                                        )
 
                                     # Persist and emit each step
                                     for step in steps:

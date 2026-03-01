@@ -100,7 +100,12 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
         return {"success": False, "error": str(e)}
 
     use_cloud = os.environ.get("BROWSER_USE_CLOUD", "").lower() in ("1", "true", "yes")
-    browser_profile = BrowserProfile(use_cloud=use_cloud, headless=headless if not use_cloud else True)
+    profile_kwargs: dict = {"use_cloud": use_cloud, "headless": headless if not use_cloud else True}
+    if not use_cloud:
+        # Give each parallel agent its own isolated profile dir to avoid Chromium lock conflicts
+        import tempfile
+        profile_kwargs["user_data_dir"] = Path(tempfile.mkdtemp(prefix="bu_agent_"))
+    browser_profile = BrowserProfile(**profile_kwargs)
     agent = Agent(task=task, llm=llm, browser_profile=browser_profile)
 
     if session_id:
@@ -160,8 +165,8 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
                 page = await agent.browser.get_current_page()
                 jpeg = await page.screenshot(type="jpeg", quality=40)
                 screenshot_b64 = base64.b64encode(jpeg).decode()
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[frame] Screenshot capture failed at step {step_num}: {e}", file=sys.stderr, flush=True)
             if screenshot_b64:
                 await _post_frame(session_id, agent_id, step_num, url, screenshot_b64)
             await _post_event(session_id, {
