@@ -7,6 +7,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AgentRunPanel, { type AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import AgentTiles from '$lib/components/AgentTiles.svelte';
+  import AgentGraph from '$lib/components/AgentGraph.svelte';
 
   let sessionId = $derived(page.params.sessionId!);
   let messageList = $state<Message[]>([]);
@@ -279,7 +280,7 @@
     });
   }
 
-  let activeTab = $state<'chat' | 'browser'>('chat');
+  let activeTab = $state<'chat' | 'browser' | 'graph'>('chat');
 
   const liveAgentCount = $derived(
     Object.values(agentFrames).filter(f => !f.done).length
@@ -343,6 +344,24 @@
         <span class="text-[10px] text-text-faint">{Object.keys(agentFrames).length}</span>
       {/if}
     </button>
+    <button
+      role="tab"
+      aria-selected={activeTab === 'graph'}
+      aria-controls="panel-graph"
+      onclick={() => activeTab = 'graph'}
+      class="px-3 py-1.5 text-xs font-medium rounded-t transition-colors flex items-center gap-1.5
+        {activeTab === 'graph'
+          ? 'text-text border-b-2 border-accent -mb-px'
+          : 'text-text-faint hover:text-text'}"
+    >
+      Graph
+      {#if agentRuns.length > 0}
+        {@const totalSteps = agentRuns.reduce((s, r) => s + r.steps.length, 0)}
+        {#if totalSteps > 0}
+          <span class="text-[10px] text-text-faint">{totalSteps}</span>
+        {/if}
+      {/if}
+    </button>
   </div>
 
   <!-- Chat tab -->
@@ -390,6 +409,12 @@
         connectSSE(id);
       }}
     />
+
+  <!-- Graph tab -->
+  {:else if activeTab === 'graph'}
+    <div id="panel-graph" role="tabpanel" class="flex-1 overflow-hidden p-3">
+      <AgentGraph runs={agentRuns} />
+    </div>
 
   <!-- Browser tab -->
   {:else}
