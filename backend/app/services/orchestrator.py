@@ -16,26 +16,24 @@ from app.models.agent_run_log import AgentRunLog
 from app.services import sse
 from app.config import get_settings
 
-SYSTEM_PROMPT = """You are an AI assistant with a fleet of browser agents that can take REAL actions on the web.
+SYSTEM_PROMPT = """You are an AI assistant commanding a fleet of real browser agents. Your primary job is to spawn browser agents to get things done.
 
-DEFAULT TO USING BROWSER AGENTS. When in doubt, spawn one. Your agents can navigate, click, fill forms, log in, purchase, book, extract data, and complete multi-step web workflows — not just read pages.
+SPAWN A BROWSER AGENT (via Task tool) for virtually everything:
+- Any information that can change: prices, news, availability, scores, weather, stocks, hours, contact info
+- Any research or comparison: products, services, reviews, competitors
+- Any URL, domain, website, or web service mentioned
+- Any action: booking, buying, signing up, submitting forms, logging in
+- Any claim that should be verified on a live site
+- "What is X?" questions where X is a real-world thing with a web presence
 
-ALWAYS use browser agents for:
-- Any question requiring current information (prices, news, availability, scores, weather, stocks)
-- Research tasks (comparing products, reading reviews, finding contact info, checking hours)
-- Taking actions on behalf of the user (submitting forms, booking, signing up, purchasing)
-- Extracting structured data from any website
-- Verifying facts on a live website
-- Anything involving a URL, domain, or named web service
+SPAWN MULTIPLE AGENTS IN PARALLEL when the task decomposes:
+- Research 3 products → 3 parallel agents (one per product)
+- Compare options → one agent per option
+- Multi-step workflows → chain results from one agent into the next
 
-Spawn agents IN PARALLEL when tasks decompose naturally:
-- Researching multiple topics → one agent per source
-- Comparing options → one agent per option
-- Sequential workflows → chain results between agents
+ONLY skip browser agents for: basic arithmetic, explaining code the user just pasted, or pure creative writing with absolutely no web component.
 
-Only answer from memory (no browser) for: pure math, explaining code, well-known definitions, or creative writing with zero web dependency.
-
-After agents return results, synthesize into a clear, markdown-formatted response. Show the user what was found, not just that agents ran."""
+After agents complete, synthesize a clear markdown response. Show what was actually found — not just that agents ran."""
 
 
 async def run_turn(
@@ -61,7 +59,7 @@ async def _run_with_sdk(
     settings,
 ) -> None:
     import os
-    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition
+    from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
 
     # The SDK spawns a claude CLI subprocess. If CLAUDECODE is set (backend was
     # started inside a Claude Code terminal), the subprocess tries to connect to
@@ -97,6 +95,91 @@ The browser runs headlessly and streams screenshots back to the user in real tim
 Write specific, action-oriented tasks. Include the exact URL when known.
 Return the JSON result from the script exactly as-is."""
 
+    # Correlation state for hook closures
+    pending_tasks: dict[str, str] = {}      # tool_use_id -> task text
+    active_runs: dict[str, uuid.UUID] = {}  # sdk_agent_id -> AgentRun.id
+
+    async def on_pre_task(input_data: dict, tool_use_id: str | None, context) -> dict:
+        if tool_use_id:
+            pending_tasks[tool_use_id] = input_data.get("tool_input", {}).get("prompt", "")
+        return {}
+
+    async def on_subagent_start(input_data: dict, tool_use_id: str | None, context) -> dict:
+        try:
+            sdk_id = input_data.get("agent_id", "")
+            task = pending_tasks.get(tool_use_id or "", "browser task")
+            agent_run = AgentRun(
+                session_id=uuid.UUID(session_id_str),
+                message_id=message_id,
+                task=task,
+                status=AgentRunStatus.RUNNING,
+                started_at=datetime.now(timezone.utc),
+            )
+            db.add(agent_run)
+            await db.flush()
+            active_runs[sdk_id] = agent_run.id
+            await sse.publish(session_id_str, "agent_event", {
+                "type": "agent_spawned",
+                "agent_id": str(agent_run.id),
+                "task": task,
+            })
+        except Exception:
+            logger.warning("on_subagent_start failed", exc_info=True)
+        return {}
+
+    async def on_subagent_stop(input_data: dict, tool_use_id: str | None, context) -> dict:
+        try:
+            sdk_id = input_data.get("agent_id", "")
+            agent_run_id = active_runs.get(sdk_id)
+            transcript_path = input_data.get("agent_transcript_path")
+            messages = []
+            if transcript_path:
+                try:
+                    messages = await asyncio.to_thread(_load_transcript, transcript_path)
+                except Exception:
+                    logger.warning("Failed to load transcript from %s", transcript_path, exc_info=True)
+            steps = _extract_browser_steps(messages)
+            final = _extract_final_result(messages)
+            for step in steps:
+                db.add(AgentRunLog(
+                    agent_run_id=agent_run_id,
+                    step=step.get("step", 0),
+                    url=step.get("url"),
+                    action_type=step.get("action_type"),
+                    action_params=step.get("action_params"),
+                    thought=step.get("thought"),
+                    evaluation=step.get("evaluation"),
+                    memory=step.get("memory"),
+                    extracted_content=step.get("extracted_content"),
+                    success=step.get("success"),
+                    error=step.get("error"),
+                    step_start_time=step.get("step_start_time"),
+                    step_end_time=step.get("step_end_time"),
+                    duration_seconds=step.get("duration_seconds"),
+                ))
+            result_row = await db.execute(select(AgentRun).where(AgentRun.id == agent_run_id))
+            agent_run = result_row.scalar_one_or_none()
+            if agent_run:
+                agent_run.status = AgentRunStatus.COMPLETE if (final and final.get("success")) else AgentRunStatus.ERROR
+                agent_run.result = final.get("result") if final else None
+                agent_run.error = final.get("error") if final else None
+                agent_run.completed_at = datetime.now(timezone.utc)
+            await db.flush()
+            for step in steps:
+                await sse.publish(session_id_str, "agent_log", {
+                    "agent_run_id": str(agent_run_id),
+                    **{k: v for k, v in step.items() if k != "type"},
+                })
+            await sse.publish(session_id_str, "agent_event", {
+                "type": "agent_complete",
+                "agent_run_id": str(agent_run_id),
+                "result": final.get("result") if final else None,
+                "total_steps": len(steps),
+            })
+        except Exception:
+            logger.warning("on_subagent_stop failed", exc_info=True)
+        return {}
+
     full_response = ""
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
 
@@ -114,18 +197,20 @@ Return the JSON result from the script exactly as-is."""
                     permission_mode="bypassPermissions",
                     cwd=_backend_dir,
                     stderr=_on_stderr,
+                    model="claude-sonnet-4-6" if settings.llm_provider != "bedrock" else None,
+                    include_partial_messages=True,
                     agents={
                         "browser-agent": AgentDefinition(
-                            description="Browses the web to extract data, research topics, or interact with pages. Use for any task requiring web navigation.",
+                            description="Navigates websites, searches the web, extracts data, and takes real actions (click, fill forms, submit). Use for ANY task involving current information, a URL, or web interaction.",
                             prompt=BROWSER_AGENT_PROMPT,
                             tools=["Bash"],
                         )
                     },
-                    # NOTE: SDK hooks (SubagentStart/SubagentStop) require bidirectional
-                    # control stream communication between bun subprocess and Python.
-                    # When the subprocess calls back via sendRequest, it fails with
-                    # "Stream closed" crashing the agent. Hooks are disabled until we
-                    # have a reliable out-of-band mechanism (e.g. polling transcript).
+                    hooks={
+                        "PreToolUse": [HookMatcher(matcher="Task", hooks=[on_pre_task])],
+                        "SubagentStart": [HookMatcher(hooks=[on_subagent_start])],
+                        "SubagentStop": [HookMatcher(hooks=[on_subagent_stop])],
+                    },
                     setting_sources=["project", "local"],
                 ),
             ):
