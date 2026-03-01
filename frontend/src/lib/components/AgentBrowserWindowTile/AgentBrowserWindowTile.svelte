@@ -31,6 +31,10 @@
     messages = [],
     /** Initial pixel width of the tile (sets starting size before any resize). */
     initialWidth = null,
+    /** Initial left offset within the floating canvas. */
+    initialLeft = 0,
+    /** Initial top offset within the floating canvas. */
+    initialTop = 0,
   }: {
     src?: string;
     alt?: string;
@@ -42,6 +46,8 @@
     agentName?: string;
     messages?: Message[];
     initialWidth?: number | null;
+    initialLeft?: number;
+    initialTop?: number;
   } = $props();
 
   const { aspectRatio, objectFit } = agentBrowserWindowTileConfig;
@@ -175,12 +181,12 @@
   -->
   <div
     class={cn(
-      'absolute z-10 p-1 touch-none',
+      'absolute z-10 p-4 touch-none',
       'text-(--text-muted) hover:text-(--text) transition-colors',
-      corner === 'se' && 'bottom-1.5 right-1.5 cursor-se-resize',
-      corner === 'sw' && 'bottom-1.5 left-1.5  cursor-sw-resize',
-      corner === 'ne' && 'top-1.5  right-1.5  cursor-ne-resize',
-      corner === 'nw' && 'top-1.5  left-1.5   cursor-nw-resize',
+      corner === 'se' && 'bottom-0 right-0 cursor-se-resize',
+      corner === 'sw' && 'bottom-0 left-0  cursor-sw-resize',
+      corner === 'ne' && 'top-0  right-0  cursor-ne-resize',
+      corner === 'nw' && 'top-0  left-0   cursor-nw-resize',
       isResizing && resizeStart?.corner === corner && 'text-(--text)'
     )}
     style={
@@ -229,11 +235,11 @@
         onkeydown={(e) => { if (e.key === 'Escape') closeExpand(); }}
       >
         <!-- Left: Browser screenshot (70%) — stays dark since it's a webpage screenshot -->
-        <div class="relative flex-[7] bg-black min-w-0 flex items-center justify-center">
+        <div class="relative flex-[7] min-w-0">
           <img
             {src}
             {alt}
-            class="size-full object-contain"
+            class="size-full object-cover"
             draggable="false"
           />
           <!-- Agent info overlay at bottom -->
@@ -241,17 +247,7 @@
             <span class="text-white/90 text-sm font-medium">{agentName}</span>
             <span class="text-white/60 text-xs">{status}</span>
           </div>
-          <!-- Close button -->
-          <button
-            type="button"
-            class="absolute top-3 right-3 p-1.5 rounded-lg bg-black/40 text-white/70 hover:text-white hover:bg-black/60 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
-            aria-label="Close expanded view"
-            onclick={closeExpand}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-            </svg>
-          </button>
+
         </div>
 
         <!-- Right: Chat stream (30%) — light theme matching the app -->
@@ -290,18 +286,9 @@
 
 <div
   bind:this={containerEl}
-  class={cn(
-    'relative',
-    draggable && (isDragging ? 'cursor-grabbing' : 'cursor-grab'),
-    className
-  )}
-  style="{resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px); {isDragging || isResizing ? 'z-index: 9999; position: relative;' : ''}"
+  class={cn('relative', className)}
+  style="position: absolute; left: {initialLeft}px; top: {initialTop}px; {resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px); z-index: {isDragging || isResizing ? 9999 : 1};"
   role="group"
-  aria-label={draggable ? 'Browser window tile, drag to move' : undefined}
-  onpointerdown={onPointerDown}
-  onpointermove={onPointerMove}
-  onpointerup={onPointerUp}
-  onpointercancel={onPointerUp}
 >
   <div
     class={cn(
@@ -313,7 +300,16 @@
       isResizing && 'ring-2 ring-accent/40'
     )}
   >
-    <AgentTileStatusBar {status} {agentName} />
+    <div
+      class={draggable ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}
+      role="presentation"
+      onpointerdown={onPointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onpointercancel={onPointerUp}
+    >
+      <AgentTileStatusBar {status} {agentName} />
+    </div>
     {#if resizable}
       <!-- Render handles before the expand button so DOM order never beats z-index -->
       {@render resizeHandle('se')}

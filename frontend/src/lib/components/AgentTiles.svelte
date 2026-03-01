@@ -22,7 +22,9 @@
   const agents = $derived(
     Object.entries(frames).map(([id, f]) => ({ agent_id: id, ...f }))
   );
-  const cols = $derived(agents.length <= 1 ? 1 : agents.length <= 4 ? 2 : 3);
+
+  const TILE_W = 420;
+  const CASCADE = 44; // px diagonal offset per tile
 
   function agentName(agent: { url: string | null; step: number | null }): string {
     if (agent.url) return agent.url.replace(/^https?:\/\//, '').split('/')[0];
@@ -32,26 +34,24 @@
 </script>
 
 {#if agents.length > 0}
-  <div class="{fullscreen ? 'h-full flex flex-col' : 'border-t border-border bg-surface px-4 py-3 shrink-0'}">
+  <div class="{fullscreen ? 'h-full' : 'border-t border-border bg-surface shrink-0 h-64'} relative overflow-hidden">
     {#if !fullscreen}
-      <div class="flex items-center gap-2 mb-2">
+      <div class="absolute top-2 left-4 flex items-center gap-2 z-10 pointer-events-none">
         <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest">Windows</span>
         <span class="text-[10px] text-text-faint">({agents.length})</span>
       </div>
     {/if}
-    <div
-      class="grid gap-3 {fullscreen ? 'flex-1' : ''}"
-      style="grid-template-columns: repeat({cols}, minmax(0, 1fr)); {fullscreen ? 'align-content: start' : ''}"
-    >
-      {#each agents as agent (agent.agent_id)}
-        <AgentBrowserWindowTile
-          src={agent.screenshot ? `data:image/jpeg;base64,${agent.screenshot}` : undefined}
-          status={agent.done ? 'Done' : 'In-Progress'}
-          agentName={agentName(agent)}
-          draggable={true}
-          {messages}
-        />
-      {/each}
-    </div>
+    {#each agents as agent, i (agent.agent_id)}
+      <AgentBrowserWindowTile
+        src={agent.screenshot ? `data:image/jpeg;base64,${agent.screenshot}` : undefined}
+        status={agent.done ? 'Done' : 'In-Progress'}
+        agentName={agentName(agent)}
+        draggable={true}
+        initialWidth={TILE_W}
+        initialLeft={24 + i * CASCADE}
+        initialTop={fullscreen ? 24 + i * CASCADE : 20 + i * CASCADE}
+        {messages}
+      />
+    {/each}
   </div>
 {/if}
