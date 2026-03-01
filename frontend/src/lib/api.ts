@@ -112,3 +112,28 @@ export const messages = {
     }),
   streamUrl: (sessionId: string) => `${BASE}/sessions/${sessionId}/stream`,
 };
+
+// Agent runs
+export interface AgentRunStep {
+  step: number;
+  url?: string | null;
+  action_type?: string | null;
+  thought?: string | null;
+  evaluation?: string | null;
+  success?: boolean | null;
+  extracted_content?: string | null;
+  error?: string | null;
+}
+
+export interface AgentRunRecord {
+  id: string;
+  task: string;
+  status: 'running' | 'complete' | 'error';
+  result?: string | null;
+  total_steps: number;
+  steps: AgentRunStep[];
+}
+
+export const agentRuns = {
+  list: (sessionId: string) => request<AgentRunRecord[]>(`/sessions/${sessionId}/agent-runs`),
+};

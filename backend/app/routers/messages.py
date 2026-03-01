@@ -6,9 +6,11 @@ import sentry_sdk
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, AsyncSessionLocal
+from app.models.agent_run import AgentRun
 from app.models.message import Message
 from app.models.session import Session
 from app.routers.sessions import get_owned_session
@@ -115,6 +117,44 @@ async def send_message(
     background_tasks.add_task(run_orchestrator)
 
     return assistant_msg
+
+
+@router.get("/{session_id}/agent-runs")
+async def list_agent_runs(
+    session_id: uuid.UUID,
+    _session: Annotated[Session, Depends(get_owned_session)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    result = await db.execute(
+        select(AgentRun)
+        .where(AgentRun.session_id == session_id)
+        .order_by(AgentRun.created_at)
+        .options(selectinload(AgentRun.logs))
+    )
+    runs = result.scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "task": r.task,
+            "status": r.status,
+            "result": r.result,
+            "total_steps": len(r.logs),
+            "steps": [
+                {
+                    "step": log.step,
+                    "url": log.url,
+                    "action_type": log.action_type,
+                    "thought": log.thought,
+                    "evaluation": log.evaluation,
+                    "success": log.success,
+                    "extracted_content": log.extracted_content,
+                    "error": log.error,
+                }
+                for log in sorted(r.logs, key=lambda l: l.step)
+            ],
+        }
+        for r in runs
+    ]
 
 
 @router.get("/{session_id}/stream")

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte';
   import { page } from '$app/state';
-  import { messages as messagesApi, type Message } from '$lib/api';
+  import { messages as messagesApi, agentRuns as agentRunsApi, type Message } from '$lib/api';
   import { sessionsStore } from '$lib/stores/sessions';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
@@ -64,9 +64,20 @@
     cancelledMessageId = null;
     closeSSE();
     try {
-      const result = await messagesApi.list(id);
+      const [msgs, runs] = await Promise.all([
+        messagesApi.list(id),
+        agentRunsApi.list(id).catch(() => []),
+      ]);
       if (seq !== loadSeq) return; // superseded by a newer session selection
-      messageList = result;
+      messageList = msgs;
+      agentRuns = runs.map(r => ({
+        id: r.id,
+        task: r.task,
+        status: r.status,
+        result: r.result,
+        total_steps: r.total_steps,
+        steps: r.steps,
+      }));
     } catch (e) {
       if (seq !== loadSeq) return;
       error = 'Failed to load messages';
