@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import WidgetMessageBubble from './WidgetMessageBubble.svelte';
   import type { WidgetMessage } from './types';
 
@@ -12,7 +13,13 @@
   let activeTab = $state<TabId>('chat');
   let widgetW = $state(380);
   let widgetH = $state(520);
-  let resizeStart = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  let widgetTop = $state(0);
+  let widgetLeft = $state(0);
+
+  // Top-edge resize state
+  let resizeStart = $state<{ y: number; h: number; top: number } | null>(null);
+  // Header drag-to-move state
+  let moveStart = $state<{ mx: number; my: number; wx: number; wy: number } | null>(null);
 
   const AGENT_NAMES = ['Kelly Agent', 'James Agent'] as const;
   let agentIndex = $state(0);
@@ -30,30 +37,60 @@
     },
   ]);
 
-  function onWidgetResizeDown(e: PointerEvent) {
+  onMount(() => {
+    widgetTop = window.innerHeight - widgetH - 24;
+    widgetLeft = window.innerWidth - widgetW - 24;
+  });
+
+  // Invisible top-edge: resize height (keeps bottom edge fixed)
+  function onTopEdgeDown(e: PointerEvent) {
     e.preventDefault();
-    resizeStart = { x: e.clientX, y: e.clientY, w: widgetW, h: widgetH };
-    window.addEventListener('pointermove', onWindowResizeMove);
-    window.addEventListener('pointerup', onWindowResizeUp);
-    window.addEventListener('pointercancel', onWindowResizeUp);
+    e.stopPropagation();
+    resizeStart = { y: e.clientY, h: widgetH, top: widgetTop };
+    window.addEventListener('pointermove', onTopEdgeMove);
+    window.addEventListener('pointerup', onTopEdgeUp);
+    window.addEventListener('pointercancel', onTopEdgeUp);
   }
 
-  function onWindowResizeMove(e: PointerEvent) {
+  function onTopEdgeMove(e: PointerEvent) {
     if (!resizeStart) return;
-    const dx = e.clientX - resizeStart.x;
     const dy = e.clientY - resizeStart.y;
-    widgetW = Math.min(WIDGET_MAX_W, Math.max(WIDGET_MIN_W, resizeStart.w + dx));
-    widgetH = Math.min(
+    const newH = Math.min(
       window.innerHeight * (WIDGET_MAX_H / 100),
       Math.max(WIDGET_MIN_H, resizeStart.h - dy)
     );
+    widgetTop = Math.max(0, resizeStart.top + (resizeStart.h - newH));
+    widgetH = newH;
   }
 
-  function onWindowResizeUp() {
+  function onTopEdgeUp() {
     resizeStart = null;
-    window.removeEventListener('pointermove', onWindowResizeMove);
-    window.removeEventListener('pointerup', onWindowResizeUp);
-    window.removeEventListener('pointercancel', onWindowResizeUp);
+    window.removeEventListener('pointermove', onTopEdgeMove);
+    window.removeEventListener('pointerup', onTopEdgeUp);
+    window.removeEventListener('pointercancel', onTopEdgeUp);
+  }
+
+  // Header: drag to move widget
+  function onHeaderDown(e: PointerEvent) {
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    moveStart = { mx: e.clientX, my: e.clientY, wx: widgetLeft, wy: widgetTop };
+    window.addEventListener('pointermove', onHeaderMove);
+    window.addEventListener('pointerup', onHeaderUp);
+    window.addEventListener('pointercancel', onHeaderUp);
+  }
+
+  function onHeaderMove(e: PointerEvent) {
+    if (!moveStart) return;
+    widgetLeft = Math.max(0, Math.min(window.innerWidth - widgetW, moveStart.wx + (e.clientX - moveStart.mx)));
+    widgetTop = Math.max(0, Math.min(window.innerHeight - widgetH, moveStart.wy + (e.clientY - moveStart.my)));
+  }
+
+  function onHeaderUp() {
+    moveStart = null;
+    window.removeEventListener('pointermove', onHeaderMove);
+    window.removeEventListener('pointerup', onHeaderUp);
+    window.removeEventListener('pointercancel', onHeaderUp);
   }
 
   function sendMessage(content: string) {
@@ -89,27 +126,28 @@
 </script>
 
 <div
-  class="fixed bottom-6 right-6 flex flex-col rounded-3xl border border-white/60 bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden z-50 backdrop-blur-sm transition-shadow duration-200 hover:shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
-  style="width: {widgetW}px; height: {widgetH}px"
+  class="fixed flex flex-col rounded-3xl border border-white/60 bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden z-50 backdrop-blur-sm"
+  style="width: {widgetW}px; height: {widgetH}px; top: {widgetTop}px; left: {widgetLeft}px"
 >
-  <!-- Resize handle at top: drag to resize (window listeners so it works across re-renders) -->
+  <!-- Invisible top-edge resize handle -->
   <div
     role="separator"
     aria-label="Resize chat widget"
-    class="shrink-0 flex justify-center py-2 cursor-n-resize touch-none select-none text-border-subtle hover:text-border bg-surface/30 border-b border-border-subtle/50"
-    onpointerdown={onWidgetResizeDown}
-  >
-    <div class="w-10 h-1 rounded-full bg-current/60 hover:bg-current transition-colors"></div>
-  </div>
+    class="absolute top-0 left-0 right-0 h-2 cursor-n-resize touch-none z-10"
+    onpointerdown={onTopEdgeDown}
+  />
 
-  <!-- Tabs -->
-  <header class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5">
+  <!-- Tabs / drag handle -->
+  <header
+    class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5 {moveStart ? 'cursor-grabbing' : 'cursor-grab'} select-none"
+    onpointerdown={onHeaderDown}
+  >
     <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
       <button
         type="button"
         role="tab"
         aria-selected={activeTab === 'chat'}
-        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 {activeTab ===
+        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab ===
         'chat'
           ? 'bg-surface-hover text-text shadow-sm'
           : 'text-text-muted hover:text-text'}"
@@ -121,7 +159,7 @@
         type="button"
         role="tab"
         aria-selected={activeTab === 'history'}
-        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 {activeTab ===
+        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab ===
         'history'
           ? 'bg-surface-hover text-text shadow-sm'
           : 'text-text-muted hover:text-text'}"
