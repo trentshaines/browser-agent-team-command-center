@@ -1,8 +1,9 @@
 <script lang="ts">
   import { fade, scale, slide } from 'svelte/transition';
-  import { quintOut } from 'svelte/easing';
+  import { quintOut, backOut } from 'svelte/easing';
   import { planning, type AgentPlan } from '$lib/api';
   import { sessionsStore } from '$lib/stores/sessions';
+  import { agentColorByIndex } from '$lib/palette';
 
   let {
     isOpen,
@@ -145,6 +146,10 @@
                 class="w-5 h-5 rounded-full animate-spin [animation-duration:1.2s]"
                 style="background: conic-gradient(from 0deg, transparent 0%, #6366f1 70%, transparent 100%)"
               ></div>
+            {:else if step === 'review'}
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-accent">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
             {:else}
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-accent">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -159,7 +164,7 @@
             <p class="text-[11px] text-text-faint mt-0.5">
               {step === 'prompt'
                 ? 'Describe what you want to accomplish'
-                : 'Edit agents and tasks before launching'}
+                : `${agents.length} agents configured · review and confirm`}
             </p>
           </div>
 
@@ -250,7 +255,7 @@
             <!-- Agent list -->
             <div class="flex flex-col gap-1.5">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-medium text-text-muted">Agent Team ({agents.length})</span>
+                <span class="text-[10px] font-medium text-text-faint uppercase tracking-widest">Agent Team · {agents.length} agents</span>
                 <button
                   type="button"
                   onclick={addAgent}
@@ -261,20 +266,26 @@
                 </button>
               </div>
 
-              <div class="flex flex-col gap-2.5">
+              <div class="grid grid-cols-2 gap-2.5">
                 {#each agents as agent, idx (idx)}
-                  <div class="rounded-lg border border-border bg-background/60 p-3 flex flex-col gap-2 group">
+                  {@const c = agentColorByIndex(idx)}
+                  <div
+                    in:scale={{ start: 0.65, duration: 420, easing: backOut }}
+                    class="rounded-xl p-3 flex flex-col gap-2 group"
+                    style="background: {c.bg}; box-shadow: inset 0 0 0 1px {c.ring};"
+                  >
                     <div class="flex items-center gap-2">
-                      <div class="w-5 h-5 rounded-full bg-accent/20 text-accent text-[10px] font-bold flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </div>
+                      <span
+                        class="w-2 h-2 rounded-full shrink-0"
+                        style="background-color: {c.hex}"
+                      ></span>
                       <input
                         bind:value={agent.name}
                         oninput={(e) => updateAgent(idx, 'name', e.currentTarget.value)}
                         type="text"
                         placeholder="Agent name"
                         disabled={launching}
-                        class="flex-1 px-2 py-1 rounded bg-transparent border border-transparent hover:border-border focus:border-accent/60 text-sm text-text font-medium placeholder:text-text-faint focus:outline-none transition-all disabled:opacity-50"
+                        class="flex-1 px-1.5 py-0.5 rounded bg-transparent border border-transparent hover:border-border focus:border-accent/60 text-xs text-text font-semibold placeholder:text-text-faint focus:outline-none transition-all disabled:opacity-50"
                       />
                       {#if agents.length > 1}
                         <button
@@ -296,7 +307,7 @@
                       rows={2}
                       placeholder="Task description"
                       disabled={launching}
-                      class="w-full px-2 py-1.5 rounded bg-transparent border border-transparent hover:border-border focus:border-accent/60 text-xs text-text-muted placeholder:text-text-faint focus:outline-none transition-all resize-none leading-relaxed disabled:opacity-50"
+                      class="w-full px-1.5 py-1 rounded bg-transparent border border-transparent hover:border-border focus:border-accent/60 text-[10px] text-text-muted placeholder:text-text-faint focus:outline-none transition-all resize-none leading-snug disabled:opacity-50"
                     ></textarea>
                   </div>
                 {/each}

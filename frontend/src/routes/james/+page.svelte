@@ -254,22 +254,29 @@
   <title>James — Command Center</title>
 </svelte:head>
 
-<div class="min-h-screen bg-background flex flex-col">
-  <header class="flex items-center justify-between border-b border-border-subtle bg-surface/50 px-6 py-3">
+<div class="min-h-screen bg-background flex flex-col relative overflow-hidden">
+  <!-- Animated gradient background -->
+  <div class="absolute inset-0 -z-0 overflow-hidden" aria-hidden="true">
+    <div class="gradient-orb orb-1"></div>
+    <div class="gradient-orb orb-2"></div>
+    <div class="gradient-orb orb-3"></div>
+    <div class="gradient-orb orb-4"></div>
+  </div>
+  <header class="relative z-10 flex items-center justify-between border-b border-white/30 bg-white/40 backdrop-blur-sm px-6 py-3">
     <div class="flex items-center gap-2.5">
       <Logo size={18} />
       <span class="text-sm font-semibold text-text">James</span>
     </div>
     <button
       onclick={() => (createModalOpen = true)}
-      class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] transition-all"
+      class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] transition-all"
     >
       <PlusIcon size={14} />
       New Project
     </button>
   </header>
 
-  <main class="flex-1 relative overflow-hidden">
+  <main class="flex-1 relative z-10 overflow-hidden">
     {#if Object.keys(agentFrames).length > 0}
       <AgentTiles frames={agentFrames} fullscreen messages={messageList} />
     {:else if agentRuns.some(r => r.status === 'running')}
@@ -282,16 +289,6 @@
     {:else if sessionId}
       <div class="flex items-center justify-center h-full">
         <p class="text-text-faint text-sm select-none">Agent windows will appear here</p>
-      </div>
-    {:else}
-      <div class="flex flex-col items-center justify-center h-full gap-3 text-center">
-        <p class="text-text-faint text-sm select-none">Create a project to get started</p>
-        <button
-          onclick={() => (createModalOpen = true)}
-          class="text-accent text-sm hover:underline"
-        >
-          New Project
-        </button>
       </div>
     {/if}
   </main>
@@ -318,3 +315,77 @@
   onClose={() => (spawnModalOpen = false)}
   onSpawn={handleSpawn}
 />
+
+<style>
+  .gradient-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.35;
+    will-change: transform, opacity;
+  }
+
+  .orb-1 {
+    width: 45vw;
+    height: 45vw;
+    top: -10%;
+    left: -10%;
+    background: radial-gradient(circle, #c4b5fd 0%, #ddd6fe 40%, transparent 70%);
+    animation: drift-1 18s ease-in-out infinite;
+  }
+
+  .orb-2 {
+    width: 40vw;
+    height: 40vw;
+    bottom: -5%;
+    right: -8%;
+    background: radial-gradient(circle, #fbcfe8 0%, #fce7f3 40%, transparent 70%);
+    animation: drift-2 22s ease-in-out infinite;
+  }
+
+  .orb-3 {
+    width: 35vw;
+    height: 35vw;
+    top: 40%;
+    right: 20%;
+    background: radial-gradient(circle, #bfdbfe 0%, #dbeafe 40%, transparent 70%);
+    animation: drift-3 20s ease-in-out infinite;
+  }
+
+  .orb-4 {
+    width: 30vw;
+    height: 30vw;
+    bottom: 15%;
+    left: 25%;
+    background: radial-gradient(circle, #d9f99d 0%, #ecfccb 40%, transparent 70%);
+    animation: drift-4 24s ease-in-out infinite;
+  }
+
+  @keyframes drift-1 {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+    25%      { transform: translate(8vw, 6vh) scale(1.08); opacity: 0.28; }
+    50%      { transform: translate(3vw, 12vh) scale(0.95); opacity: 0.4; }
+    75%      { transform: translate(-5vw, 4vh) scale(1.05); opacity: 0.3; }
+  }
+
+  @keyframes drift-2 {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
+    30%      { transform: translate(-10vw, -8vh) scale(1.1); opacity: 0.25; }
+    60%      { transform: translate(-4vw, -14vh) scale(0.92); opacity: 0.38; }
+    80%      { transform: translate(6vw, -4vh) scale(1.03); opacity: 0.32; }
+  }
+
+  @keyframes drift-3 {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+    35%      { transform: translate(-12vw, 5vh) scale(1.12); opacity: 0.22; }
+    65%      { transform: translate(-6vw, -8vh) scale(0.9); opacity: 0.38; }
+    85%      { transform: translate(4vw, 2vh) scale(1.06); opacity: 0.28; }
+  }
+
+  @keyframes drift-4 {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.25; }
+    20%      { transform: translate(6vw, -10vh) scale(1.08); opacity: 0.2; }
+    50%      { transform: translate(12vw, -4vh) scale(0.94); opacity: 0.32; }
+    75%      { transform: translate(2vw, -8vh) scale(1.04); opacity: 0.22; }
+  }
+</style>

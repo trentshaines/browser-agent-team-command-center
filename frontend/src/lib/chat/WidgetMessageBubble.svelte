@@ -25,7 +25,6 @@
     }
   });
 
-  // All non-user senders get a palette colour (including Orchestrator)
   const nameColor = $derived(() => {
     if (message.role === 'user') return 'var(--text)';
     return senderColor(displayName);

@@ -33,6 +33,12 @@ Optional: `ANTHROPIC_API_KEY` (orchestrator fallback), `MINIMAX_API_KEY`
 - Connection string must use `postgresql+asyncpg://` with `ssl=require`
 - Migrations: `cd backend && alembic upgrade head`
 
+## Frontend Styling Rules
+
+- **No pills.** Buttons, badges, tags, and chips must use `rounded-lg` (8px) or `rounded-xl` (12px) — never `rounded-full` on rectangular/clickable elements. `rounded-full` is reserved for truly circular elements (spinners, status dots, avatars).
+- Modals and large containers use `rounded-2xl` or `rounded-[1.5rem]`.
+- Chat bubbles and input fields use `rounded-2xl`.
+
 ## Key Paths
 
 ```
