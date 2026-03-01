@@ -2,12 +2,12 @@
   export interface AgentStep {
     step: number;
     url?: string | null;
-    action_type?: string;
-    thought?: string;
-    evaluation?: string;
-    success?: boolean;
-    extracted_content?: string;
-    error?: string;
+    action_type?: string | null;
+    thought?: string | null;
+    evaluation?: string | null;
+    success?: boolean | null;
+    extracted_content?: string | null;
+    error?: string | null;
   }
 
   export interface AgentRun {
