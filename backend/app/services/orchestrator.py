@@ -100,19 +100,12 @@ async def _run_with_sdk(
 
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
-Run: uv run python scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
+Run the script EXACTLY ONCE with the full task in a single command:
+  uv run python scripts/browser_agent.py --task "<complete task description>" --session-id {session_id_str}
 
-The script is at scripts/browser_agent.py relative to the working directory.
-The browser runs headlessly and streams screenshots back to the user in real time. You can:
-- Navigate to any URL and extract text, tables, prices, listings
-- Click buttons, links, and UI elements
-- Fill and submit forms (search, contact, checkout, signup)
-- Log into services when credentials are provided in the task
-- Complete multi-step flows: search → select → fill → submit
-- Download or scrape structured data
-
-Write specific, action-oriented tasks. Include the exact URL when known.
-Return the JSON result from the script exactly as-is."""
+IMPORTANT: Run the script only once. Do not split the task into multiple script invocations.
+The script handles navigation, clicking, form filling, and data extraction internally.
+Return the JSON result from the script exactly as-is — do not modify or summarize it."""
 
     # Track Task tool calls to publish agent_spawned / agent_complete via stream parsing
     # (SDK hooks require bidirectional IPC that fails in subprocess mode)
@@ -261,6 +254,12 @@ Return the JSON result from the script exactly as-is."""
                                         agent_run.result = final_result.get("result") if final_result else None
                                         agent_run.completed_at = datetime.now(timezone.utc)
                                     await db.flush()
+                                    await sse.publish(session_id_str, "agent_event", {
+                                        "type": "agent_complete",
+                                        "agent_run_id": str(agent_run_id),
+                                        "result": final_result.get("result") if final_result else None,
+                                        "total_steps": len(steps),
+                                    })
                                     logger.info("Agent complete: run=%s steps=%d", agent_run_id, len(steps))
                                 except Exception:
                                     logger.warning("Failed to update AgentRun on completion", exc_info=True)

@@ -98,6 +98,11 @@ async def _claim_agent_run(session_id: str) -> str | None:
     return None
 
 
+async def _post_event(session_id: str, payload: dict) -> None:
+    """POST an agent event (spawned, log, complete) to the internal SSE relay."""
+    await _post_internal("/internal/agent-event", {"session_id": session_id, **payload})
+
+
 async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
     await _post_internal("/internal/agent-frame", {
         "session_id": session_id, "agent_id": agent_id,
@@ -124,10 +129,16 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
     from browser_use import Agent, BrowserProfile
 
     # Try to claim the orchestrator's pre-registered agent_run_id so frames/logs
-    # share the same UUID as the card already shown in the UI. Fall back to a
-    # fresh UUID if the claim times out (e.g. no session_id or registry miss).
+    # share the same UUID as the card already shown in the UI.
     if session_id:
-        agent_id = (await _claim_agent_run(session_id)) or str(uuid.uuid4())
+        claimed_id = await _claim_agent_run(session_id)
+        if claimed_id:
+            agent_id = claimed_id
+            # Orchestrator already emitted agent_spawned with this ID
+        else:
+            # Claim timed out — emit our own agent_spawned as fallback
+            agent_id = str(uuid.uuid4())
+            await _post_event(session_id, {"type": "agent_spawned", "agent_id": agent_id, "task": task})
     else:
         agent_id = str(uuid.uuid4())
 
@@ -226,9 +237,8 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             "total_steps": len(result),
             "total_duration": result.total_duration_seconds(),
         }
-        return outcome
     except Exception as e:
-        return {
+        outcome = {
             "success": False,
             "task": task,
             "error": str(e),
@@ -237,6 +247,15 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
         stop_event.set()
         if session_id:
             await frame_task
+
+    if session_id:
+        await _post_event(session_id, {
+            "type": "agent_complete",
+            "agent_id": agent_id,
+            "result": outcome.get("result"),
+            "total_steps": outcome.get("total_steps", 0),
+        })
+    return outcome
 
 
 def main():
