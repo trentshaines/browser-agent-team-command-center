@@ -370,7 +370,7 @@
         if (convex && convexId) {
           await convex.mutation(api.agentRuns.addStep, {
             agentRunId: convexId,
-            step: data.step,
+            step: data.step ?? liveAgentRuns[runIdx].steps.length,
             url: data.url ?? undefined,
             action: data.action ?? undefined,
             thought: data.thought ?? undefined,
