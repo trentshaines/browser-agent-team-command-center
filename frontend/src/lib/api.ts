@@ -71,6 +71,7 @@ export const auth = {
     method: 'POST',
     body: JSON.stringify({ code }),
   }),
+  devLogin: () => request<{ access_token: string; refresh_token: string }>('/auth/dev-login', { method: 'POST' }),
 };
 
 // Sessions

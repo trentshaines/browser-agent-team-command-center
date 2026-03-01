@@ -179,6 +179,28 @@ async def logout():
     return response
 
 
+@router.post("/dev-login")
+async def dev_login(
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Dev-only endpoint: creates or finds a dev user and returns auth tokens."""
+    settings = get_settings()
+    if settings.is_production:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    email = "dev@localhost"
+    user = await get_user_by_email(db, email)
+    if not user:
+        user = await create_user(db=db, email=email, username="dev", email_verified=True)
+        await db.flush()
+
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    response = JSONResponse(content={"access_token": access_token, "refresh_token": refresh_token})
+    set_auth_cookies(response, access_token, refresh_token)
+    return response
+
+
 @router.get("/me", response_model=UserRead)
 async def get_me(user: Annotated[User, Depends(get_current_user_required)]):
     return user

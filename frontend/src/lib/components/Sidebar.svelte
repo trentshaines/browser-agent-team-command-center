@@ -133,4 +133,4 @@
   </div>
 </aside>
 
-<CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} />
+<CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} onLaunch={() => {}} />

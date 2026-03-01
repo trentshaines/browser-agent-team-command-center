@@ -22,20 +22,42 @@
   // Header drag-to-move state
   let moveStart = $state<{ mx: number; my: number; wx: number; wy: number } | null>(null);
 
-  let { onSpawnAgent }: { onSpawnAgent?: () => void } = $props();
+  let {
+    onSpawnAgent,
+    /** External message list. When provided, replaces internal mock messages. */
+    messages: externalMessages = undefined,
+    /** Whether a response is currently streaming. Shows stop button when true. */
+    streaming = false,
+    /** External send handler. When provided, replaces internal mock handler. */
+    onSend: externalOnSend = undefined,
+    /** Called when user clicks the stop button during streaming. */
+    onStop = undefined,
+    /** Disables the chat input (e.g. before a session is created). */
+    disabled = false,
+  }: {
+    onSpawnAgent?: () => void;
+    messages?: WidgetMessage[];
+    streaming?: boolean;
+    onSend?: (content: string) => void;
+    onStop?: () => void;
+    disabled?: boolean;
+  } = $props();
 
-  const AGENT_NAMES = ['Kelly Agent', 'James Agent'] as const;
-  let agentIndex = $state(0);
-
-  let chatMessages = $state<WidgetMessage[]>([
+  // Fallback mock messages used only when no external messages are provided.
+  let mockMessages = $state<WidgetMessage[]>([
     {
       id: '1',
       role: 'assistant',
-      content: 'Hi! This is the dev chat widget. Type a message below.',
+      content: 'Create a project with the + button to get started.',
       created_at: new Date().toISOString(),
-      senderName: 'Kelly Agent',
     },
   ]);
+
+  const controlled = $derived(externalOnSend !== undefined);
+  const displayMessages = $derived(controlled ? (externalMessages ?? []) : mockMessages);
+  const handleSend = $derived<((content: string) => void) | undefined>(
+    disabled ? undefined : (controlled ? externalOnSend : mockSend)
+  );
 
   onMount(() => {
     widgetTop = window.innerHeight - widgetH - 24;
@@ -93,35 +115,14 @@
     window.removeEventListener('pointercancel', onHeaderUp);
   }
 
-  async function sendMessage(content: string) {
+  function mockSend(content: string) {
     const userMsg: WidgetMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
       created_at: new Date().toISOString(),
     };
-    chatMessages = [...chatMessages, userMsg];
-
-    const name = AGENT_NAMES[agentIndex % AGENT_NAMES.length];
-    agentIndex += 1;
-    const fullContent = `You said: "${content}" — (widget is local-only, no backend.)`;
-    const msgId = crypto.randomUUID();
-
-    const assistantMsg: WidgetMessage = {
-      id: msgId,
-      role: 'assistant',
-      content: '',
-      created_at: new Date().toISOString(),
-      senderName: name,
-    };
-    chatMessages = [...chatMessages, assistantMsg];
-
-    for (let i = 0; i < fullContent.length; i++) {
-      await new Promise<void>(r => setTimeout(r, 18));
-      chatMessages = chatMessages.map(m =>
-        m.id === msgId ? { ...m, content: fullContent.slice(0, i + 1) } : m
-      );
-    }
+    mockMessages = [...mockMessages, userMsg];
   }
 </script>
 
@@ -150,32 +151,49 @@
       class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5"
       onpointerdown={onHeaderDown}
     >
-      <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'chat'}
-          class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
-          onclick={() => (activeTab = 'chat')}
-        >
-          Chat History
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'history'}
-          class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
-          onclick={() => (activeTab = 'history')}
-        >
-          View Progress
-        </button>
+      <div class="flex items-center gap-1">
+        <div class="flex flex-1 rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'chat'}
+            class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            onclick={() => (activeTab = 'chat')}
+          >
+            Chat History
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'history'}
+            class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            onclick={() => (activeTab = 'history')}
+          >
+            View Progress
+          </button>
+        </div>
+        {#if streaming && onStop}
+          <button
+            type="button"
+            onclick={onStop}
+            class="shrink-0 ml-1 p-1.5 rounded-xl text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
+            aria-label="Stop generating"
+            title="Stop generating"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+          </button>
+        {:else if streaming}
+          <div class="shrink-0 ml-2 w-3.5 h-3.5 border-2 border-text-muted/40 border-t-text-muted rounded-full animate-spin"></div>
+        {/if}
       </div>
     </header>
 
     <!-- Content -->
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
       {#if activeTab === 'chat'}
-        <ChatPanel messages={chatMessages} onSend={sendMessage} {onSpawnAgent} />
+        <ChatPanel messages={displayMessages} onSend={handleSend} {onSpawnAgent} />
       {:else}
         <ProgressPanel />
       {/if}
