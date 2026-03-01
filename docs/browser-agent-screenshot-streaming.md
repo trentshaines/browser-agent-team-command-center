@@ -1,240 +1,140 @@
 # Browser Agent Screenshot Streaming
 
-How to capture live screenshots from a `browser-use` agent and stream them to a frontend in real time.
+How live screenshots flow from browser-use cloud agents through the backend SSE pipeline into the `AgentBrowserWindowTile` component.
 
 ---
 
-## Overview
+## Architecture
 
-The pipeline runs at ~0.67 fps (one frame every 1.5 seconds). Each frame is a JPEG screenshot, base64-encoded, pushed over an SSE (Server-Sent Events) connection to the browser, and rendered as a plain `<img>` tag.
+Screenshots are produced per-step (not on a timer). Each time browser-use completes a step, the agent downloads the step's `screenshot_url`, base64-encodes it, and pushes it through the existing SSE event bus. No separate internal endpoint or polling loop is needed.
 
 ```
-browser-use agent (Playwright)
-  └─ take_screenshot() every 1.5s
-      └─ base64-encode JPEG
-          └─ POST to internal API endpoint
-              └─ publish to SSE bus (per-session queue)
-                  └─ EventSource stream held open by browser
-                      └─ update Svelte/React state
-                          └─ <img src="data:image/jpeg;base64,...">
+browser-use cloud agent
+  └─ step.screenshot_url (hosted by browser-use)
+      └─ BrowserAgent._emit_frame()          # backend/agent.py
+          └─ httpx.get(screenshot_url)
+              └─ base64.b64encode()
+                  └─ emit("agent_frame", { agent_id, step, url, screenshot })
+                      └─ _make_event_callback()   # backend/server.py
+                          └─ SSE event: agent_frame
+                              └─ EventSource listener  # +page.svelte
+                                  └─ agentFrames[agent_id] = { step, url, screenshot, done }
+                                      └─ AgentTiles.svelte
+                                          └─ src="data:image/jpeg;base64,..."
+                                              └─ AgentBrowserWindowTile <img>
 ```
 
 ---
 
-## Step 1 — Capture screenshots in the agent
+## Layer 1 — Agent emits frames (`backend/agent.py`)
 
-Inside your agent runner, start a background task that loops and calls `take_screenshot()` on the browser session. POST each frame to your own backend.
+`BrowserAgent._emit_frame(step)` is called after every `yield step` in `start()`, `retry()`, and `recover()`. It runs as fire-and-forget (`asyncio.ensure_future`) so it never blocks the step stream.
 
 ```python
-import asyncio, base64, httpx
+def _emit_frame(self, step: TaskStepView) -> None:
+    if not step.screenshot_url or not self.on_event:
+        return
 
-async def stream_frames(agent, session_id: str, agent_id: str, stop: asyncio.Event):
-    step = 0
-    async with httpx.AsyncClient() as client:
-        while not stop.is_set():
-            try:
-                jpeg = await agent.browser_session.take_screenshot(format="jpeg", quality=40)
-                b64  = base64.b64encode(jpeg).decode()
-                await client.post(
-                    "http://localhost:8000/internal/agent-frame",
-                    json={"session_id": session_id, "agent_id": agent_id,
-                          "step": step, "screenshot": b64},
-                    headers={"X-Internal-Token": INTERNAL_TOKEN},
-                )
-                step += 1
-            except Exception:
-                pass
-            await asyncio.sleep(1.5)   # ~0.67 fps — raise for smoother video
-
-# Start alongside your agent run:
-stop_event = asyncio.Event()
-frame_task = asyncio.create_task(stream_frames(agent, session_id, agent_id, stop_event))
-
-# ... run agent ...
-
-stop_event.set()
-await frame_task
-```
-
-**Tips:**
-- `quality=40` keeps base64 payloads small (~100–200 KB per frame). Raise for sharper images.
-- Use a `stop_event` so the loop exits cleanly when the agent finishes.
-- Protect the endpoint with an internal secret token so only your backend can call it.
-
----
-
-## Step 2 — Internal API endpoint (receives frames, publishes to SSE)
-
-Add a POST route that accepts the frame payload and pushes it onto the SSE bus.
-
-```python
-# FastAPI example
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends
-
-router = APIRouter(prefix="/internal")
-
-class AgentFrameData(BaseModel):
-    session_id: str  = Field(..., max_length=36)
-    agent_id:   str  = Field(..., max_length=36)
-    step:       int  | None = Field(None, ge=0)
-    url:        str  | None = Field(None, max_length=2048)
-    screenshot: str  | None = Field(None, max_length=500_000)  # ~375 KB base64
-
-@router.post("/agent-frame")
-async def agent_frame(data: AgentFrameData, _=Depends(verify_internal_token)):
-    await sse_bus.publish(data.session_id, "agent_frame", {
-        "agent_id":   data.agent_id,
-        "step":       data.step,
-        "url":        data.url,
-        "screenshot": data.screenshot,
-    })
-    return {"ok": True}
-```
-
----
-
-## Step 3 — SSE pub/sub bus
-
-A lightweight in-process pub/sub. Each connected client gets an `asyncio.Queue`. `publish()` drops the formatted SSE payload into every subscriber's queue for that session.
-
-```python
-import asyncio, json
-from collections import defaultdict
-
-class SSEBus:
-    def __init__(self):
-        self._subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
-
-    async def publish(self, session_id: str, event: str, data: dict):
-        payload = f"event: {event}\ndata: {json.dumps(data)}\n\n"
-        for q in list(self._subscribers[session_id]):
-            try:
-                q.put_nowait(payload)
-            except asyncio.QueueFull:
-                pass  # drop for slow consumers
-
-    async def stream(self, session_id: str):
-        """Async generator — yield SSE payloads as they arrive."""
-        q: asyncio.Queue = asyncio.Queue(maxsize=64)
-        self._subscribers[session_id].append(q)
+    async def _download_and_emit():
         try:
-            yield ": connected\n\n"   # initial comment keeps connection alive
-            while True:
-                yield await q.get()
-        finally:
-            self._subscribers[session_id].remove(q)
+            async with httpx.AsyncClient() as http:
+                resp = await http.get(step.screenshot_url, timeout=15, follow_redirects=True)
+                resp.raise_for_status()
+            b64 = base64.b64encode(resp.content).decode()
+            await self._emit("agent_frame", {
+                "agent_id": self.task_id,
+                "step": step.number,
+                "url": step.url,
+                "screenshot": b64,
+            })
+        except Exception:
+            pass  # non-critical
 
-sse_bus = SSEBus()
+    asyncio.ensure_future(_download_and_emit())
 ```
+
+Frame rate depends on how fast browser-use produces steps — typically one every 1–3 seconds.
 
 ---
 
-## Step 4 — Streaming endpoint (frontend connects here)
+## Layer 2 — Event translation (`backend/server.py`)
 
-Expose an SSE endpoint that the browser holds open with `EventSource`.
+`_make_event_callback()` translates raw agent events into the SSE event names the frontend expects. `agent_frame` passes through unchanged:
 
-```python
-from fastapi import Request
-from fastapi.responses import StreamingResponse
+| Backend event | SSE event name | Key data fields |
+|---|---|---|
+| `agent_spawned` | `agent_event` | `type: "agent_spawned"`, `agent_id`, `task` |
+| `agent_status` | `agent_event` | `type: "agent_complete"`, `agent_run_id`, `result`, `total_steps` |
+| `agent_step` | `agent_log` | `agent_run_id`, `step`, `action`, `content` |
+| `agent_frame` | `agent_frame` | `agent_id`, `step`, `url`, `screenshot` |
+| `done` | `done` | `agents[]` |
 
-@router.get("/{session_id}/stream")
-async def stream_session(session_id: str, request: Request):
-    return StreamingResponse(
-        sse_bus.stream(session_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",   # prevents nginx from buffering
-        },
-    )
-```
+Events are pushed onto per-subscriber `asyncio.Queue` objects and streamed via `GET /sessions/{session_id}/stream`.
 
 ---
 
-## Step 5 — Frontend: consume the SSE stream
+## Layer 3 — Frontend SSE handler (`+page.svelte`)
 
-Open an `EventSource` connection and listen for `agent_frame` events. Store the latest screenshot per agent in state.
+The page listens for `agent_frame` events and stores the latest screenshot per agent:
 
 ```typescript
-// Connect
-const eventSource = new EventSource(`/api/sessions/${sessionId}/stream`, {
-  withCredentials: true,
-});
-
-// State: latest frame per agent_id
-let agentFrames: Record<string, {
-  screenshot: string | null;
-  step: number | null;
-  url: string | null;
-  done: boolean;
-}> = {};
-
-// Handle frames
+// +page.svelte:175-189
 eventSource.addEventListener('agent_frame', (e) => {
   const data = JSON.parse(e.data);
+  if (!agentRuns.some(r => r.id === data.agent_id)) return;
   agentFrames[data.agent_id] = {
-    screenshot: data.screenshot,
     step: data.step,
     url: data.url,
+    screenshot: data.screenshot,
     done: false,
   };
 });
-
-// Cleanup
-eventSource.close();
 ```
+
+When the `done` event fires, all tiles are marked `done: true`.
 
 ---
 
-## Step 6 — Frontend: render the screenshot
+## Layer 4 — Tile rendering (`AgentTiles.svelte` → `AgentBrowserWindowTile`)
 
-Convert the raw base64 string to a data URL and drop it into an `<img>` tag. No blob URLs or canvas needed.
+`AgentTiles.svelte` converts the raw base64 to a data URI and passes it as the `src` prop:
 
-**Svelte:**
 ```svelte
-{#each Object.entries(agentFrames) as [agentId, frame]}
-  <img
-    src={frame.screenshot ? `data:image/jpeg;base64,${frame.screenshot}` : undefined}
-    alt="Agent {agentId}"
-    style="width: 100%; height: auto;"
+<!-- AgentTiles.svelte:60-71 -->
+{#each agents as agent, i (agent.agent_id)}
+  <AgentBrowserWindowTile
+    src={agent.screenshot ? `data:image/jpeg;base64,${agent.screenshot}` : undefined}
+    status={agent.done ? 'Done' : 'In-Progress'}
+    agentName={agentName(agent)}
+    ...
   />
 {/each}
 ```
 
-**React:**
-```tsx
-{Object.entries(agentFrames).map(([agentId, frame]) => (
-  <img
-    key={agentId}
-    src={frame.screenshot ? `data:image/jpeg;base64,${frame.screenshot}` : undefined}
-    alt={`Agent ${agentId}`}
-    style={{ width: '100%', height: 'auto' }}
-  />
-))}
-```
+`AgentBrowserWindowTile` is a generic draggable/resizable window tile. It renders whatever `src` it receives in an `<img>` tag — it has no knowledge of SSE, base64, or agent lifecycle. When `src` is `undefined` (no frame yet), it falls back to a static default image.
 
 ---
 
-## Key decisions and trade-offs
+## File reference
+
+| File | Role |
+|---|---|
+| `backend/agent.py` : `_emit_frame()` | Downloads screenshot, base64-encodes, emits `agent_frame` event |
+| `backend/agent.py` : `start()`, `retry()`, `recover()` | Calls `_emit_frame(step)` after each `yield step` |
+| `backend/server.py` : `_make_event_callback()` | Translates event types, pushes to subscriber queues |
+| `backend/server.py` : `stream_session()` | SSE endpoint at `GET /sessions/{id}/stream` |
+| `frontend/src/routes/chat/[sessionId]/+page.svelte` | SSE consumer, stores frames in `agentFrames` state |
+| `frontend/src/lib/components/AgentTiles.svelte` | Maps `agentFrames` → `AgentBrowserWindowTile` instances |
+| `frontend/src/lib/components/AgentBrowserWindowTile/` | Generic tile: drag, resize, expand modal, renders `<img src>` |
+
+---
+
+## Key decisions
 
 | Decision | Reason |
 |---|---|
-| JPEG quality 40 | Keeps payloads small. Raise to 70–80 for sharper text. |
-| 1.5s interval | Low enough overhead, sufficient for monitoring. Reduce to 0.5s for smoother feel. |
-| Base64 over binary | Works natively with SSE (text protocol) and data URLs. No extra decoding step. |
-| SSE over WebSockets | Simpler — SSE is one-directional, auto-reconnects, and works through most proxies. |
-| One queue per client | Session-isolated — multiple browser tabs each get their own stream. |
-| `put_nowait` with drop | Prevents slow clients from blocking the agent. Frames are ephemeral anyway. |
-| Internal token auth | Prevents external callers from injecting fake frames into any session. |
-
----
-
-## Minimal end-to-end checklist
-
-- [ ] Agent runner calls `take_screenshot()` in a loop and POSTs to `/internal/agent-frame`
-- [ ] Internal endpoint validates token, publishes to SSE bus with `session_id` as the key
-- [ ] SSE bus maintains a per-session subscriber list of `asyncio.Queue` objects
-- [ ] Public stream endpoint returns `StreamingResponse` with `media_type="text/event-stream"`
-- [ ] Frontend opens `EventSource`, listens for `agent_frame`, stores latest frame per `agent_id`
-- [ ] `<img src="data:image/jpeg;base64,...">` renders the frame
+| Per-step (not timed) | Frames arrive naturally with each browser-use step. No polling loop or background task needed. |
+| Fire-and-forget download | Screenshot download is async and errors are swallowed — never blocks the step stream. |
+| Base64 over SSE | Works natively with SSE (text protocol) and data URIs. No WebSocket or binary framing needed. |
+| No internal endpoint | Frames flow through the same event callback as all other agent events. No separate `/internal/agent-frame` route. |
+| `agent_frame` pass-through | The event callback translates most event names, but `agent_frame` is already what the frontend expects. |

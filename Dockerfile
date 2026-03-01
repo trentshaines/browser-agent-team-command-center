@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy repo contents
 COPY backend/ backend/
-COPY scripts/ scripts/
 COPY pyproject.toml .
 
 # Install all Python dependencies:

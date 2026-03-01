@@ -1,9 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { authStore } from '$lib/stores/auth';
   import { sessionsStore, sessionsLoading } from '$lib/stores/sessions';
-  import { PlusIcon, Trash2Icon, LogOutIcon, LoaderIcon } from 'lucide-svelte';
+  import { PlusIcon, Trash2Icon, LoaderIcon } from 'lucide-svelte';
   import Button from '$lib/components/ui/button.svelte';
   import CreateProjectModal from '$lib/components/CreateProjectModal.svelte';
   import { cn } from '$lib/utils';
@@ -12,18 +11,17 @@
   let confirmDeleteId = $state<string | null>(null);
   let createModalOpen = $state(false);
 
-  async function deleteSession(e: MouseEvent, id: string) {
+  function deleteSession(e: MouseEvent, id: string) {
     e.preventDefault();
     e.stopPropagation();
     if (confirmDeleteId !== id) {
       confirmDeleteId = id;
-      // Auto-dismiss confirm after 3s
       setTimeout(() => { if (confirmDeleteId === id) confirmDeleteId = null; }, 3000);
       return;
     }
     confirmDeleteId = null;
     deletingId = id;
-    await sessionsStore.delete(id);
+    sessionsStore.delete(id);
     deletingId = null;
     if (page.params.sessionId === id) goto('/chat');
   }
@@ -108,28 +106,9 @@
     {/if}
   </nav>
 
-  <!-- User footer -->
+  <!-- Footer -->
   <div class="px-3 py-3 border-t border-border-subtle">
-    {#if $authStore.user}
-      <div class="flex items-center gap-2">
-        {#if $authStore.user.profile_image}
-          <img src={$authStore.user.profile_image} alt="" class="w-7 h-7 rounded-full" />
-        {:else}
-          <div class="w-7 h-7 rounded-full bg-border flex items-center justify-center text-xs font-medium text-text">
-            {$authStore.user.username[0].toUpperCase()}
-          </div>
-        {/if}
-        <span class="text-sm text-text-muted truncate flex-1">{$authStore.user.username}</span>
-<Button
-          variant="danger"
-          onclick={() => authStore.logout().then(() => goto('/login'))}
-          class="p-1 w-auto h-auto rounded"
-          title="Logout"
-        >
-          <LogOutIcon size={15} />
-        </Button>
-      </div>
-    {/if}
+    <span class="text-xs text-text-faint">Browser Agent Team</span>
   </div>
 </aside>
 

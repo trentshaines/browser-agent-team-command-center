@@ -8,13 +8,13 @@
   const WIDGET_MIN_W = 320;
   const WIDGET_MAX_W = 640;
   const WIDGET_MIN_H = 360;
-  const WIDGET_MAX_H = 85; // vh
+  const WIDGET_MAX_H = 95; // vh
 
   type TabId = 'chat' | 'history';
 
   let activeTab = $state<TabId>('chat');
   let widgetW = $state(380);
-  let widgetH = $state(680);
+  let widgetH = $state(0); // set in onMount based on viewport
   let widgetTop = $state(0);
   let widgetLeft = $state(0);
 
@@ -63,6 +63,7 @@
   );
 
   onMount(() => {
+    widgetH = Math.round(window.innerHeight * 0.88);
     widgetTop = window.innerHeight - widgetH - 24;
     widgetLeft = window.innerWidth - widgetW - 24;
   });
@@ -134,11 +135,11 @@
   style="top: {widgetTop}px; left: {widgetLeft}px"
 >
   <!-- Glass border pane — sits behind the widget, bleeds out on all sides -->
-  <div class="absolute -inset-3 rounded-[2.25rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_20px_64px_rgba(0,0,0,0.18)]" />
+  <div class="absolute -inset-3 rounded-2xl backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_20px_64px_rgba(0,0,0,0.18)]" />
 
   <!-- Widget -->
   <div
-    class="relative flex flex-col rounded-3xl bg-white/95 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+    class="relative flex flex-col rounded-xl bg-white/95 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
     style="width: {widgetW}px; height: {widgetH}px"
   >
     <!-- Invisible top-edge resize handle -->
@@ -155,24 +156,24 @@
       onpointerdown={onHeaderDown}
     >
       <div class="flex items-center gap-1">
-        <div class="flex flex-1 rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
+        <div class="flex flex-1 rounded-lg bg-surface p-0.5 gap-0.5" role="tablist">
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'chat'}
-            class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'chat' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
             onclick={() => (activeTab = 'chat')}
           >
-            Chat History
+            Chat
           </button>
           <button
             type="button"
             role="tab"
             aria-selected={activeTab === 'history'}
-            class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
+            class="flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all duration-150 cursor-pointer {activeTab === 'history' ? 'bg-surface-hover text-text shadow-sm' : 'text-text-muted hover:text-text'}"
             onclick={() => (activeTab = 'history')}
           >
-            View Progress
+            Progress
           </button>
         </div>
         {#if streaming && onStop}

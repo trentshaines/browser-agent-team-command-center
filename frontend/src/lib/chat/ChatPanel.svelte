@@ -44,16 +44,19 @@
 <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
   <div
     bind:this={scrollEl}
-    class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col bg-transparent"
+    class="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col bg-transparent"
   >
-    {#each messages as msg (msg.id)}
-      <WidgetMessageBubble message={msg} senderName={msg.senderName} />
+    {#each messages as msg, i (msg.id)}
+      {@const prevSender = i > 0 ? (messages[i - 1].senderName ?? (messages[i - 1].role === 'user' ? 'You' : 'Orchestrator')) : null}
+      {@const thisSender = msg.senderName ?? (msg.role === 'user' ? 'You' : 'Orchestrator')}
+      {@const sameSender = prevSender === thisSender}
+      <WidgetMessageBubble message={msg} senderName={msg.senderName} compact={sameSender} />
     {/each}
   </div>
 
   {#if onSend}
-    <div class="shrink-0 border-t border-border-subtle/50 px-3 py-3">
-      <div class="flex items-center gap-2 rounded-2xl bg-surface border border-border-subtle px-4 py-2.5 focus-within:border-border transition-colors">
+    <div class="shrink-0 border-t border-border-subtle/50 px-3 py-2">
+      <div class="flex items-center gap-2 rounded-xl bg-surface border border-border-subtle px-3 py-2 focus-within:border-border transition-colors">
         {#if onSpawnAgent}
           <button
             type="button"
@@ -73,7 +76,7 @@
           onkeydown={onKeydown}
           type="text"
           {placeholder}
-          class="flex-1 bg-transparent text-sm text-text placeholder:text-text-faint outline-none"
+          class="flex-1 bg-transparent text-xs text-text placeholder:text-text-faint outline-none"
         />
       </div>
     </div>

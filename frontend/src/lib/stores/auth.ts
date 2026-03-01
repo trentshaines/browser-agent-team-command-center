@@ -1,32 +1,19 @@
 import { writable } from 'svelte/store';
-import { auth as authApi, type User, ApiError } from '$lib/api';
 
+// No auth — always logged in
 interface AuthState {
-  user: User | null;
+  user: { id: string; username: string } | null;
   loading: boolean;
 }
 
 function createAuthStore() {
-  const { subscribe, set, update } = writable<AuthState>({ user: null, loading: true });
+  const { subscribe, set } = writable<AuthState>({ user: null, loading: true });
 
   return {
     subscribe,
     async init() {
-      try {
-        const user = await authApi.me();
-        set({ user, loading: false });
-      } catch (e) {
-        set({ user: null, loading: false });
-      }
-    },
-    async logout() {
-      try {
-        await authApi.logout();
-      } catch {}
-      set({ user: null, loading: false });
-    },
-    setUser(user: User | null) {
-      update(s => ({ ...s, user }));
+      // No backend auth — immediately set a local user
+      set({ user: { id: 'local', username: 'you' }, loading: false });
     },
   };
 }

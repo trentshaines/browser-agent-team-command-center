@@ -1,16 +1,19 @@
 <script lang="ts">
   import type { Message } from '$lib/api';
+  import { senderColor } from '$lib/palette';
 
   let {
     message,
     senderName,
+    compact = false,
   }: {
     message: Message;
     senderName?: string;
+    compact?: boolean;
   } = $props();
 
   const displayName = $derived(
-    senderName ?? (message.role === 'user' ? 'You' : 'Assistant')
+    senderName ?? (message.role === 'user' ? 'You' : 'Orchestrator')
   );
 
   const timeStr = $derived.by(() => {
@@ -22,23 +25,27 @@
     }
   });
 
-  const nameColorClass = $derived(
-    message.role === 'user'
-      ? 'text-text font-medium'
-      : displayName === 'Kelly Agent'
-        ? 'text-[#6366f1] font-medium'
-        : displayName === 'James Agent'
-          ? 'text-[#dc2626] font-medium'
-          : 'text-accent font-medium'
-  );
+  // All non-user senders get a palette colour (including Orchestrator)
+  const nameColor = $derived(() => {
+    if (message.role === 'user') return 'var(--text)';
+    return senderColor(displayName);
+  });
 </script>
 
-<div class="mb-4">
-  <div class="flex flex-wrap items-baseline gap-2 text-sm">
-    <span class={nameColorClass}>{displayName}</span>
-    <span class="text-text-faint text-xs shrink-0">{timeStr}</span>
+{#if compact}
+  <div class="py-0.5 flex items-baseline gap-1.5 text-xs leading-snug">
+    <span class="font-semibold shrink-0" style="color: {nameColor()}">{displayName}</span>
+    <span class="text-text whitespace-pre-wrap">{message.content}</span>
+    <span class="text-text-faint text-[10px] shrink-0 ml-auto">{timeStr}</span>
   </div>
-  <p class="text-text text-sm mt-1 whitespace-pre-wrap leading-relaxed {message.role === 'user' ? '' : 'pl-0'}">
-    {message.content}
-  </p>
-</div>
+{:else}
+  <div class="mb-2">
+    <div class="flex items-baseline gap-1.5 text-xs">
+      <span class="font-semibold" style="color: {nameColor()}">{displayName}</span>
+      <span class="text-text-faint text-[10px] shrink-0">{timeStr}</span>
+    </div>
+    <p class="text-text text-xs mt-0.5 whitespace-pre-wrap leading-snug">
+      {message.content}
+    </p>
+  </div>
+{/if}

@@ -1,12 +1,5 @@
 // In-memory mock backend store — shared across all mock API routes in dev server process
 
-export interface User {
-	id: string;
-	email: string;
-	username: string;
-	profile_image?: string;
-}
-
 export interface Session {
 	id: string;
 	title: string;
@@ -14,21 +7,7 @@ export interface Session {
 	updated_at: string;
 }
 
-export interface Message {
-	id: string;
-	role: 'user' | 'assistant';
-	content: string;
-	created_at: string;
-}
-
-export const MOCK_USER: User = {
-	id: 'mock-user-1',
-	email: 'dev@localhost',
-	username: 'dev',
-};
-
 const sessionsMap = new Map<string, Session>();
-const messagesMap = new Map<string, Message[]>();
 
 // SSE queue: sessionId → pending raw SSE strings
 const sseQueues = new Map<string, string[]>();
@@ -66,24 +45,7 @@ export function updateSession(id: string, title: string): Session | null {
 
 export function deleteSession(id: string): void {
 	sessionsMap.delete(id);
-	messagesMap.delete(id);
 	sseQueues.delete(id);
-}
-
-// Messages
-
-export function getMessages(sessionId: string): Message[] {
-	return messagesMap.get(sessionId) ?? [];
-}
-
-export function addMessage(sessionId: string, msg: Message): void {
-	const list = messagesMap.get(sessionId) ?? [];
-	messagesMap.set(sessionId, [...list, msg]);
-}
-
-export function updateMessage(sessionId: string, msgId: string, content: string): void {
-	const list = messagesMap.get(sessionId) ?? [];
-	messagesMap.set(sessionId, list.map((m) => (m.id === msgId ? { ...m, content } : m)));
 }
 
 // SSE

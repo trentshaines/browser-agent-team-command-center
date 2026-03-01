@@ -1,33 +1,18 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { PlusIcon } from "lucide-svelte";
   import { FloatingChatWidget } from "$lib/chat";
   import AgentTiles from "$lib/components/AgentTiles.svelte";
   import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
-  import { auth, messages as messagesApi, tasks } from '$lib/api';
+  import Logo from "$lib/components/Logo.svelte";
+  import { tasks, streamUrl, type AgentPlan, type TaskResponse } from '$lib/api';
   import SpawnAgentModal from '$lib/components/SpawnAgentModal.svelte';
   import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
   import type { WidgetMessage } from '$lib/chat/types';
 
-  let authenticated = $state(false);
-  let authError = $state<string | null>(null);
   let createModalOpen = $state(false);
   let spawnModalOpen = $state(false);
   let sessionId = $state<string | null>(null);
-
-  onMount(async () => {
-    try {
-      await auth.me();
-      authenticated = true;
-    } catch {
-      try {
-        await auth.devLogin();
-        authenticated = true;
-      } catch (e) {
-        authError = e instanceof Error ? e.message : 'Failed to authenticate';
-      }
-    }
-  });
 
   // Chat state
   let messageList = $state<WidgetMessage[]>([]);
@@ -43,10 +28,27 @@
     done: boolean;
   }>>({});
 
+  // Map agent_run_id → agent name for chat attribution
+  const agentNames = new Map<string, string>();
+
+  // Map action_type to a short verb phrase for Slack-like chat messages
+  function formatAgentAction(actionType: string, url: string): string {
+    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; } })();
+    switch (actionType) {
+      case 'navigate': return `Navigating to ${host}…`;
+      case 'click': return `Clicked on ${host}`;
+      case 'extract': return `Extracting data from ${host}`;
+      case 'type': return `Typing on ${host}`;
+      case 'scroll': return `Scrolling on ${host}`;
+      case 'wait': return `Waiting…`;
+      default: return `${actionType} on ${host}`;
+    }
+  }
+
   let eventSource: EventSource | null = null;
 
   function connectSSE(id: string): Promise<void> {
-    const url = messagesApi.streamUrl(id);
+    const url = streamUrl(id);
     eventSource = new EventSource(url, { withCredentials: true });
 
     const ready = new Promise<void>((resolve) => {
@@ -82,12 +84,22 @@
       const data = JSON.parse(e.data);
       if (data.type === 'agent_spawned') {
         if (agentRuns.some(r => r.id === data.agent_id)) return;
+        const name = data.name ?? `Browser ${agentRuns.length + 1}`;
+        agentNames.set(data.agent_id, name);
         agentRuns = [...agentRuns, {
           id: data.agent_id,
-          name: data.name ?? `Browser ${agentRuns.length + 1}`,
+          name,
           task: data.task,
           status: 'running',
           steps: [],
+        }];
+        // Post spawn as a chat message
+        messageList = [...messageList, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `Starting: ${data.task}`,
+          created_at: new Date().toISOString(),
+          senderName: name,
         }];
       } else if (data.type === 'agent_complete') {
         agentRuns = agentRuns.map(r =>
@@ -95,6 +107,14 @@
             ? { ...r, status: data.result ? 'complete' : 'error', result: data.result, total_steps: data.total_steps }
             : r
         );
+        const name = agentNames.get(data.agent_run_id) ?? 'Agent';
+        messageList = [...messageList, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: data.result ? `Done — ${data.result}` : 'Failed',
+          created_at: new Date().toISOString(),
+          senderName: name,
+        }];
       }
     });
 
@@ -104,6 +124,15 @@
       if (runIdx >= 0) {
         if (agentRuns[runIdx].steps.some(s => s.step === data.step)) return;
         agentRuns[runIdx] = { ...agentRuns[runIdx], steps: [...agentRuns[runIdx].steps, data] };
+        // Post step as a short chat message
+        const name = agentNames.get(data.agent_run_id) ?? 'Agent';
+        messageList = [...messageList, {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: formatAgentAction(data.action_type, data.url),
+          created_at: new Date().toISOString(),
+          senderName: name,
+        }];
       }
     });
 
@@ -147,16 +176,16 @@
     }
     streaming = true;
     cancelledMessageId = null;
+    const userMsg: WidgetMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+    };
+    messageList = [...messageList, userMsg];
+    await tick();
     try {
-      const assistantMsg = await messagesApi.send(sessionId, content);
-      const userMsg: WidgetMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content,
-        created_at: new Date().toISOString(),
-      };
-      messageList = [...messageList, userMsg, { ...assistantMsg, content: '' }];
-      await tick();
+      await tasks.spawn(sessionId, content);
     } catch {
       streaming = false;
     }
@@ -173,21 +202,21 @@
 
   async function handleSpawn(name: string, task: string) {
     if (!sessionId) return;
+    const userMsg: WidgetMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: task,
+      created_at: new Date().toISOString(),
+    };
+    messageList = [...messageList, userMsg];
     try {
-      const assistantMsg = await tasks.spawn(sessionId, task, [{ name, task }]);
-      const userMsg: WidgetMessage = {
-        id: crypto.randomUUID(),
-        role: 'user',
-        content: task,
-        created_at: new Date().toISOString(),
-      };
-      messageList = [...messageList, userMsg, { ...assistantMsg, content: '' }];
+      await tasks.spawn(sessionId, task, [{ name, task }]);
     } catch (e) {
       console.error('Failed to spawn agent:', e);
     }
   }
 
-  async function onProjectLaunched(id: string, goal: string) {
+  async function onProjectLaunched(id: string, goal: string, agents: AgentPlan[]) {
     // Reset state for new session
     sessionId = id;
     createModalOpen = false;
@@ -198,7 +227,22 @@
     cancelledMessageId = null;
     closeSSE();
     await connectSSE(id);
-    await sendMessage(goal);
+
+    // Use direct task spawning with the confirmed agent team
+    const userMsg: WidgetMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: goal,
+      created_at: new Date().toISOString(),
+    };
+    messageList = [...messageList, userMsg];
+    await tick();
+    try {
+      streaming = true;
+      await tasks.spawn(id, goal, agents);
+    } catch {
+      streaming = false;
+    }
   }
 
   onDestroy(() => {
@@ -207,27 +251,21 @@
 </script>
 
 <svelte:head>
-  <title>Windows — James</title>
+  <title>James — Command Center</title>
 </svelte:head>
 
-{#if authError}
-  <div class="min-h-screen bg-background flex items-center justify-center">
-    <p class="text-red-500 text-sm">Auth failed: {authError}</p>
-  </div>
-{:else if !authenticated}
-  <div class="min-h-screen bg-background flex items-center justify-center">
-    <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-  </div>
-{:else}
 <div class="min-h-screen bg-background flex flex-col">
-  <header class="relative flex items-center justify-center border-b border-border-subtle bg-surface/50 px-6 py-4">
-    <span class="font-semibold text-text">Windows</span>
+  <header class="flex items-center justify-between border-b border-border-subtle bg-surface/50 px-6 py-3">
+    <div class="flex items-center gap-2.5">
+      <Logo size={18} />
+      <span class="text-sm font-semibold text-text">James</span>
+    </div>
     <button
       onclick={() => (createModalOpen = true)}
-      class="absolute right-6 flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-      aria-label="New project"
+      class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium bg-accent text-white hover:opacity-90 active:scale-[0.97] transition-all"
     >
-      <PlusIcon size={18} />
+      <PlusIcon size={14} />
+      New Project
     </button>
   </header>
 
@@ -280,4 +318,3 @@
   onClose={() => (spawnModalOpen = false)}
   onSpawn={handleSpawn}
 />
-{/if}
