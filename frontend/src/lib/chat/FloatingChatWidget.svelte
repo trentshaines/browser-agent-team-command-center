@@ -3,6 +3,7 @@
   import ChatPanel from './ChatPanel.svelte';
   import ProgressPanel from './ProgressPanel.svelte';
   import type { WidgetMessage } from './types';
+  import type { AgentRun } from '$lib/components/AgentRunPanel.svelte';
 
   const WIDGET_MIN_W = 320;
   const WIDGET_MAX_W = 640;
@@ -24,16 +25,12 @@
 
   let {
     onSpawnAgent,
-    /** External message list. When provided, replaces internal mock messages. */
     messages: externalMessages = undefined,
-    /** Whether a response is currently streaming. Shows stop button when true. */
     streaming = false,
-    /** External send handler. When provided, replaces internal mock handler. */
     onSend: externalOnSend = undefined,
-    /** Called when user clicks the stop button during streaming. */
     onStop = undefined,
-    /** Disables the chat input (e.g. before a session is created). */
     disabled = false,
+    agentRuns = [],
   }: {
     onSpawnAgent?: () => void;
     messages?: WidgetMessage[];
@@ -41,6 +38,7 @@
     onSend?: (content: string) => void;
     onStop?: () => void;
     disabled?: boolean;
+    agentRuns?: AgentRun[];
   } = $props();
 
   // Fallback mock messages used only when no external messages are provided.
@@ -57,6 +55,11 @@
   const displayMessages = $derived(controlled ? (externalMessages ?? []) : mockMessages);
   const handleSend = $derived<((content: string) => void) | undefined>(
     disabled ? undefined : (controlled ? externalOnSend : mockSend)
+  );
+
+  // Latest assistant message text — shown as orchestrator summary in ProgressPanel
+  const orchestratorText = $derived(
+    [...displayMessages].reverse().find(m => m.role === 'assistant')?.content ?? ''
   );
 
   onMount(() => {
@@ -195,7 +198,7 @@
       {#if activeTab === 'chat'}
         <ChatPanel messages={displayMessages} onSend={handleSend} {onSpawnAgent} />
       {:else}
-        <ProgressPanel />
+        <ProgressPanel {agentRuns} {streaming} {orchestratorText} />
       {/if}
     </div>
   </div>

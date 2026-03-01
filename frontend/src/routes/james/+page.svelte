@@ -261,6 +261,7 @@
   <FloatingChatWidget
     messages={messageList}
     {streaming}
+    {agentRuns}
     onSend={sendMessage}
     onStop={stopStreaming}
     disabled={!sessionId}
