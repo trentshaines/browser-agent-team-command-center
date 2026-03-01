@@ -32,6 +32,8 @@ from browser_use_sdk import AsyncBrowserUse
 from browser_use_sdk.types.task_step_view import TaskStepView
 from browser_use_sdk.types.task_view import TaskView
 
+from event_queue import EventType, add_event
+
 
 client = AsyncBrowserUse(api_key=os.environ["BROWSER_USE_API_KEY"])
 
@@ -65,6 +67,7 @@ class BrowserAgentLog(BaseModel):
 	content: str
 	url: str | None = None
 	actions: list[str] = []
+	handoff_url: str | None = None
 
 
 # Global log sink — the backend can read this at any time
@@ -80,29 +83,59 @@ def _flush_logs() -> None:
 
 MAX_RETRIES = 2
 MAX_RECOVERY_ATTEMPTS = 2
+MAX_GOAL_CHECKS = 5
 
 
-def _check_goal(goal: str, output: str) -> str | None:
-	"""Evaluate whether the agent's output fulfils the goal.
+def _check_goal(goal: str, output: str, steps: list[TaskStepView] | None = None) -> tuple[str, str]:
+	"""Hard-check whether the goal has been fully achieved.
 
-	Returns None if the goal is complete, or a follow-up prompt to run on the
-	same browser session if it is not.
+	Returns a tuple of (verdict, detail):
+		("COMPLETE", "")           — goal fully achieved, stop.
+		("AGENT", "<instruction>") — agent can keep going, use this instruction.
+		("HUMAN", "<reason>")      — needs human in the browser to proceed.
 	"""
+	step_context = ""
+	if steps:
+		last_steps = steps[-5:]
+		summaries = []
+		for s in last_steps:
+			parts = []
+			if s.next_goal:
+				parts.append(s.next_goal)
+			if s.url:
+				parts.append(f"url: {s.url}")
+			if s.actions:
+				parts.append(f"actions: {', '.join(s.actions[:3])}")
+			summaries.append(f"Step {s.number}: {' | '.join(parts)}")
+		step_context = "\n\nRECENT STEPS:\n" + "\n".join(summaries)
+
 	text = _bedrock_call(
 		system_prompt=(
-			"You are evaluating whether a web-browsing agent successfully completed its goal.\n\n"
-			"Given the original goal and the agent's output, determine if the goal was fully achieved.\n\n"
-			"If the goal IS complete, respond with exactly: COMPLETE\n"
-			"If the goal is NOT complete, respond with a follow-up instruction the agent should execute "
-			"to finish the task. Reference what was already accomplished and specify what still needs to "
-			"be done. Start the instruction directly, no preamble."
+			"You are strictly evaluating whether a web-browsing agent fully completed its goal.\n\n"
+			"Be rigorous. The goal must be FULLY and VERIFIABLY achieved — not partially done, "
+			"not 'likely done', not 'the page was reached'. If the goal was to apply for a job, "
+			"the application must have been submitted. If the goal was to purchase something, "
+			"the order must be confirmed.\n\n"
+			"Respond with exactly ONE of these three formats:\n\n"
+			"1. COMPLETE — the goal is fully, verifiably achieved.\n\n"
+			"2. AGENT: <instruction> — the goal is NOT complete, but the agent can continue "
+			"autonomously. Write a specific follow-up instruction after the colon.\n\n"
+			"3. HUMAN: <reason> — the goal is NOT complete and requires human intervention "
+			"(e.g. filling credentials, solving captcha, entering payment info, uploading files, "
+			"providing personal details the agent doesn't have). Write the reason after the colon."
 		),
-		user_message=f"GOAL: {goal}\n\nAGENT OUTPUT: {output}",
+		user_message=f"GOAL: {goal}\n\nAGENT OUTPUT: {output}{step_context}",
 		max_tokens=512,
 	).strip()
-	if text == "COMPLETE":
-		return None
-	return text
+
+	if text.startswith("COMPLETE"):
+		return ("COMPLETE", "")
+	if text.startswith("HUMAN:"):
+		return ("HUMAN", text[len("HUMAN:"):].strip())
+	if text.startswith("AGENT:"):
+		return ("AGENT", text[len("AGENT:"):].strip())
+	# Fallback: treat unstructured response as an agent instruction
+	return ("AGENT", text)
 
 
 JUDGE_EVERY_N_STEPS = 3
@@ -144,7 +177,7 @@ def _judge_step(goal: str, steps: list[TaskStepView]) -> str | None:
 		user_message=f"GOAL: {goal}\n\nRECENT STEPS:\n" + "\n".join(step_summaries),
 		max_tokens=256,
 	).strip()
-	if text == "ON_TRACK":
+	if text.startswith("ON_TRACK"):
 		return None
 	return text
 
@@ -152,30 +185,37 @@ def _judge_step(goal: str, steps: list[TaskStepView]) -> str | None:
 def _needs_handoff(goal: str, step: TaskStepView) -> str | None:
 	"""Use an LLM judge to decide whether the current step requires human handoff.
 
-	Returns a reason string if handoff is needed, None otherwise.
+	Returns a human-facing instruction string if handoff is needed, None otherwise.
 	"""
-	print(f"STEP: {step}")
+	if not step.screenshot_url:
+		return None
 
-	PROMPT = """
-	You are given the image of a webpage as well as the url.
-	An agent is currently taking actions on the webpage.
-	Determine if human intervention is needed.
+	PROMPT = """You are given the image of a webpage. An automated agent is working toward a goal but may be stuck.
 
-	Human intervention is likely needed when:
-	 - Completing captcha
-	 - Completing forms with information unlikely to be available to the agent
-	 - Completing payments
-	 - Logging in
+Determine if human intervention is needed. Intervention is likely needed when:
+ - A CAPTCHA or reCAPTCHA is visible
+ - A login/authentication form requiring credentials the agent doesn't have
+ - A payment/checkout form requiring card details
+ - A form asking for personal information (address, phone, etc.)
+ - An age/identity verification gate
+ - A two-factor authentication or email verification prompt
 
-	Return 'intervention' if human intervention is needed otherwise return 'none'.
-	"""
+If NO intervention is needed, respond with exactly: none
 
-	result = _bedrock_vision_call(step.screenshot_url, PROMPT)
+If intervention IS needed, respond with a short, clear instruction addressed to the human telling them exactly what to do on the page. Examples:
+ - "Please solve the CAPTCHA displayed on the page."
+ - "Please log in with your credentials — the agent needs to be authenticated to proceed."
+ - "Please fill in your payment details to complete the checkout."
+ - "Please enter your shipping address in the form."
 
-	if result == "intervention":
-		return "intervention"
+Do NOT include any preamble. Just 'none' or the instruction."""
 
-	return None
+	result = _bedrock_vision_call(step.screenshot_url, PROMPT).strip()
+
+	if result.lower().startswith("none"):
+		return None
+
+	return result
 
 
 def _build_recovery_prompt(goal: str, steps: list[TaskStepView], error: str) -> str:
@@ -228,7 +268,7 @@ class BrowserAgent:
 		self.last_url: str | None = None
 		self._resume_event = asyncio.Event()
 
-	def _log(self, action: LogAction, content: str, step: TaskStepView | None = None) -> None:
+	def _log(self, action: LogAction, content: str, step: TaskStepView | None = None, handoff_url: str | None = None) -> None:
 		entry = BrowserAgentLog(
 			agent_id=self.task_id or "pending",
 			prompt=self.prompt,
@@ -237,6 +277,7 @@ class BrowserAgent:
 			content=content,
 			url=step.url if step else None,
 			actions=step.actions if step else [],
+			handoff_url=handoff_url,
 		)
 		agent_logs.append(entry)
 		_flush_logs()
@@ -246,21 +287,35 @@ class BrowserAgent:
 			self.last_url = step.url
 
 	async def start(self) -> AsyncIterator[TaskStepView]:
-		"""Create the cloud task and stream steps until it finishes."""
+		"""Create a persistent session, then create a task on it and stream steps."""
 		self.state = AgentState.RUNNING
 		try:
-			task = await self.client.tasks.create_task(task=self.prompt)
-			self.task_id = task.id
-			self.session_id = task.session_id
-
-			# Fetch live view URLs
-			session = await self.client.sessions.get_session(self.session_id)
+			# Create a persistent session first
+			session = await self.client.sessions.create_session(
+				keep_alive=True,
+				persist_memory=True,
+			)
+			self.session_id = session.id
 			self.live_url = session.live_url
+
 			try:
 				share = await self.client.sessions.create_session_public_share(self.session_id)
 				self.share_url = share.share_url
 			except Exception:
 				pass
+
+			# Create and run the task on the session
+			task = await self.client.tasks.create_task(
+				task=self.prompt,
+				session_id=self.session_id,
+			)
+			self.task_id = task.id
+			add_event(EventType.AGENT_STARTED, {
+				"agent_id": self.task_id,
+				"prompt": self.prompt,
+				"session_id": self.session_id,
+				"live_url": self.live_url,
+			})
 
 			async for step in task.stream():
 				self.steps.append(step)
@@ -283,10 +338,20 @@ class BrowserAgent:
 
 			# Log final output
 			self._log(LogAction.OUTPUT, self.result.output or "No output")
+			add_event(EventType.AGENT_COMPLETED, {
+				"agent_id": self.task_id,
+				"prompt": self.prompt,
+				"output": self.result.output or "",
+			})
 		except Exception as e:
 			self.error = str(e)
 			self.state = AgentState.ERROR
 			self._log(LogAction.ERROR, str(e))
+			add_event(EventType.AGENT_ERROR, {
+				"agent_id": self.task_id or "pending",
+				"prompt": self.prompt,
+				"error": str(e),
+			})
 			raise
 
 	async def retry(self, follow_up_prompt: str) -> AsyncIterator[TaskStepView]:
@@ -360,22 +425,27 @@ class BrowserAgent:
 		self.result = None
 		self._log(LogAction.RETRY, f"Recovering with new session: {recovery_prompt}")
 		try:
-			kwargs: dict = {"task": recovery_prompt}
+			# Create a new persistent session for recovery
+			session_kwargs: dict = {"keep_alive": True, "persist_memory": True}
 			if start_url:
-				kwargs["start_url"] = start_url
+				session_kwargs["start_url"] = start_url
 
-			task = await self.client.tasks.create_task(**kwargs)
-			self.task_id = task.id
-			self.session_id = task.session_id
-
-			# Refresh live view URLs for new session
-			session = await self.client.sessions.get_session(self.session_id)
+			session = await self.client.sessions.create_session(**session_kwargs)
+			self.session_id = session.id
 			self.live_url = session.live_url
+
 			try:
 				share = await self.client.sessions.create_session_public_share(self.session_id)
 				self.share_url = share.share_url
 			except Exception:
 				pass
+
+			# Create and run the task on the new session
+			task = await self.client.tasks.create_task(
+				task=recovery_prompt,
+				session_id=self.session_id,
+			)
+			self.task_id = task.id
 
 			async for step in task.stream():
 				self.steps.append(step)
@@ -397,6 +467,9 @@ class BrowserAgent:
 			self.state = AgentState.ERROR
 			self._log(LogAction.ERROR, str(e))
 			raise
+
+	async def get_share_url(self) -> str:
+		return self.live_url
 
 
 class Orchestrator:
@@ -493,30 +566,62 @@ class Orchestrator:
 			await self._attempt_recovery(agent, label)
 			return
 
-		# Check goal completion and retry on the same session if needed
-		for attempt in range(MAX_RETRIES):
+		# Goal-check loop: keep going until the goal is verifiably complete
+		for attempt in range(MAX_GOAL_CHECKS):
 			if agent.state != AgentState.COMPLETE or not agent.result:
 				break
 
 			output = agent.result.output or ""
-			follow_up = _check_goal(agent.prompt, output)
-			if follow_up is None:
+			verdict, detail = _check_goal(agent.prompt, output, agent.steps)
+
+			if verdict == "COMPLETE":
 				print(f"[{label}] Goal complete.")
 				return
 
-			print(f"[{label}] Goal incomplete (attempt {attempt + 1}/{MAX_RETRIES}), retrying on same session...")
-			try:
-				async for step in agent.retry(follow_up):
-					print(
-						f"[{label}] retry step {step.number}: {step.next_goal}"
-						+ (f"  url={step.url}" if step.url else "")
+			if verdict == "HUMAN":
+				# Needs human intervention — handoff, wait, then continue
+				handoff_url = await agent.get_share_url()
+				print(f"\n[{label}] GOAL CHECK: Needs human — {detail}")
+				print(f"[{label}] >>> Complete it here: {handoff_url}")
+				print(f"[{label}] >>> Then type: resume {agent.task_id}\n")
+				agent._log(LogAction.HANDOFF, detail, handoff_url=handoff_url)
+				add_event(EventType.HANDOFF, {
+					"agent_id": agent.task_id,
+					"message": detail,
+					"handoff_url": handoff_url,
+					"source": "goal_check",
+				})
+				await agent.handoff(detail)
+				await agent.wait_for_human()
+				add_event(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": agent.task_id})
+				print(f"[{label}] Human done, continuing...")
+				try:
+					correction = await self._run_and_judge(
+						agent, label, stream=agent.continue_after_handoff()
 					)
-			except Exception as e:
-				print(f"[{label}] RETRY ERROR: {e}")
-				# Session is dead — fall through to recovery
-				break
+					# Handle any judge corrections after handoff
+					for _ in range(MAX_RETRIES):
+						if correction is None:
+							break
+						correction = await self._run_and_judge(agent, label, follow_up=correction)
+				except Exception as e:
+					print(f"[{label}] POST-HANDOFF ERROR: {e}")
+					break
+			else:
+				# verdict == "AGENT" — agent can keep going
+				print(f"[{label}] Goal incomplete (attempt {attempt + 1}/{MAX_GOAL_CHECKS}): {detail[:120]}")
+				try:
+					correction = await self._run_and_judge(agent, label, follow_up=detail)
+					for _ in range(MAX_RETRIES):
+						if correction is None:
+							break
+						agent._log(LogAction.CORRECTION, correction)
+						correction = await self._run_and_judge(agent, label, follow_up=correction)
+				except Exception as e:
+					print(f"[{label}] RETRY ERROR: {e}")
+					break
 
-		# If still failed after retries, attempt recovery with a fresh session
+		# If still not complete after all checks, attempt recovery
 		if agent.state in (AgentState.ERROR, AgentState.RUNNING):
 			await self._attempt_recovery(agent, label)
 
@@ -535,6 +640,12 @@ class Orchestrator:
 				print(f"[{label}] Starting from: {last_url}")
 
 			try:
+				add_event(EventType.RECOVERY_STARTED, {
+					"agent_id": agent.task_id or "pending",
+					"attempt": attempt + 1,
+					"recovery_prompt": recovery_prompt,
+					"start_url": last_url,
+				})
 				recovery_stream = agent.recover(recovery_prompt, start_url=last_url)
 				correction = await self._run_and_judge(agent, label, stream=recovery_stream)
 
@@ -550,6 +661,7 @@ class Orchestrator:
 				continue
 
 			if agent.state == AgentState.COMPLETE:
+				add_event(EventType.RECOVERY_COMPLETED, {"agent_id": agent.task_id})
 				print(f"[{label}] Recovered successfully.")
 				return
 
@@ -584,13 +696,27 @@ class Orchestrator:
 					f"[{label}] step {step.number}: {step.next_goal}"
 					+ (f"  url={step.url}" if step.url else "")
 				)
+				add_event(EventType.STEP, {
+					"agent_id": agent.task_id,
+					"step": step.number,
+					"goal": step.next_goal,
+					"url": step.url,
+					"actions": step.actions,
+				})
 
 				# Check every step for forms / captchas / checkouts
 				handoff_reason = _needs_handoff(agent.prompt, step)
 				if handoff_reason:
-					agent._log(LogAction.HANDOFF, handoff_reason, step)
+					handoff_url = await agent.get_share_url()
+					agent._log(LogAction.HANDOFF, handoff_reason, step, handoff_url=handoff_url)
+					add_event(EventType.HANDOFF, {
+						"agent_id": agent.task_id,
+						"message": handoff_reason,
+						"handoff_url": handoff_url,
+						"source": "vision",
+					})
 					print(f"\n[{label}] HANDOFF — {handoff_reason}")
-					print(f"[{label}] >>> Complete it here: {agent.live_url or agent.share_url}")
+					print(f"[{label}] >>> Complete it here: {handoff_url}")
 					print(f"[{label}] >>> Then type: resume {agent.task_id}\n")
 					await agent.handoff(handoff_reason)
 					return "__HANDOFF__"
@@ -602,13 +728,25 @@ class Orchestrator:
 					if verdict is not None:
 						if verdict.startswith("NEEDS_HUMAN:"):
 							reason = verdict[len("NEEDS_HUMAN:"):].strip()
+							handoff_url = await agent.get_share_url()
+							agent._log(LogAction.HANDOFF, reason, step, handoff_url=handoff_url)
+							add_event(EventType.HANDOFF, {
+								"agent_id": agent.task_id,
+								"message": reason,
+								"handoff_url": handoff_url,
+								"source": "judge",
+							})
 							print(f"\n[{label}] HANDOFF — {reason}")
-							print(f"[{label}] >>> Resolve it here: {agent.live_url or agent.share_url}")
+							print(f"[{label}] >>> Resolve it here: {handoff_url}")
 							print(f"[{label}] >>> Then type: resume {agent.task_id}\n")
 							await agent.handoff(reason)
 							return "__HANDOFF__"
 						else:
 							agent._log(LogAction.JUDGE, f"OFF TRACK: {verdict}", step)
+							add_event(EventType.CORRECTION, {
+								"agent_id": agent.task_id,
+								"correction": verdict,
+							})
 							print(f"[{label}] JUDGE: Off track at step {step.number}, stopping task...")
 							try:
 								await agent.client.tasks.update_task(agent.task_id, action="stop")
@@ -625,6 +763,7 @@ class Orchestrator:
 			# Handle handoff cycle — stop, wait for human, retry on same session
 			while result == "__HANDOFF__":
 				await agent.wait_for_human()
+				add_event(EventType.HUMAN_INPUT_RECEIVED, {"agent_id": agent.task_id})
 				print(f"[{label}] Human done, continuing on same session...")
 				result = await _drain(agent.continue_after_handoff())
 
@@ -833,6 +972,7 @@ async def main():
 	print("=" * 60)
 	summary = summarize_results(prompt, results)
 	print(summary)
+	add_event(EventType.SUMMARY, {"summary": summary})
 
 	print(f"\nWrote {len(agent_logs)} log entries to {LOG_PATH}")
 
