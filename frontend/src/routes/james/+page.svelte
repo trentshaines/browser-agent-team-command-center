@@ -7,6 +7,7 @@
     WrenchIcon,
   } from "lucide-svelte";
   import { FloatingChatWidget } from "$lib/chat";
+  import { AgentBrowserWindowTile } from "$lib/components/AgentBrowserWindowTile";
 
   const apiUrl = $derived($page.url.origin + "/api");
   const backendUrl =
@@ -76,6 +77,16 @@
           Open chat
         </a>
       </div>
+
+      <section class="mt-12 w-full" aria-label="Agent browser windows">
+        <div
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto"
+        >
+          <AgentBrowserWindowTile class="w-full" />
+          <AgentBrowserWindowTile class="w-full" />
+          <AgentBrowserWindowTile class="w-full" />
+        </div>
+      </section>
 
       <section
         class="mt-12 w-full text-left rounded-2xl border border-border-subtle bg-surface/80 p-5"
