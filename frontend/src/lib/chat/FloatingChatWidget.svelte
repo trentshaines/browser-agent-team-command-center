@@ -31,10 +31,12 @@
   function onWidgetResizeDown(e: PointerEvent) {
     e.preventDefault();
     resizeStart = { x: e.clientX, y: e.clientY, w: widgetW, h: widgetH };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    window.addEventListener('pointermove', onWindowResizeMove);
+    window.addEventListener('pointerup', onWindowResizeUp);
+    window.addEventListener('pointercancel', onWindowResizeUp);
   }
 
-  function onWidgetResizeMove(e: PointerEvent) {
+  function onWindowResizeMove(e: PointerEvent) {
     if (!resizeStart) return;
     const dx = e.clientX - resizeStart.x;
     const dy = e.clientY - resizeStart.y;
@@ -45,9 +47,11 @@
     );
   }
 
-  function onWidgetResizeUp(e: PointerEvent) {
+  function onWindowResizeUp() {
     resizeStart = null;
-    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    window.removeEventListener('pointermove', onWindowResizeMove);
+    window.removeEventListener('pointerup', onWindowResizeUp);
+    window.removeEventListener('pointercancel', onWindowResizeUp);
   }
 
   function sendMessage(content: string) {
@@ -75,15 +79,12 @@
   class="fixed bottom-6 right-6 flex flex-col rounded-3xl border border-white/60 bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden z-50 backdrop-blur-sm transition-shadow duration-200 hover:shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
   style="width: {widgetW}px; height: {widgetH}px"
 >
-  <!-- Resize handle at top -->
+  <!-- Resize handle at top: drag to resize (window listeners so it works across re-renders) -->
   <div
     role="separator"
     aria-label="Resize chat widget"
     class="shrink-0 flex justify-center py-2 cursor-n-resize touch-none select-none text-border-subtle hover:text-border bg-surface/30 border-b border-border-subtle/50"
     onpointerdown={onWidgetResizeDown}
-    onpointermove={onWidgetResizeMove}
-    onpointerup={onWidgetResizeUp}
-    onpointercancel={onWidgetResizeUp}
   >
     <div class="w-10 h-1 rounded-full bg-current/60 hover:bg-current transition-colors"></div>
   </div>
@@ -119,16 +120,16 @@
   </header>
 
   <!-- Content -->
-  <div class="flex-1 flex flex-col min-h-0">
+  <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
     {#if activeTab === 'chat'}
       <div
-        class="flex-1 overflow-y-auto px-4 py-3 flex flex-col min-h-[200px] bg-transparent"
+        class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col bg-transparent"
       >
         {#each chatMessages as msg (msg.id)}
           <WidgetMessageBubble message={msg} senderName={msg.senderName} />
         {/each}
       </div>
-      <div class="shrink-0 border-t border-border-subtle/50 bg-surface/30">
+      <div class="shrink-0 min-h-[88px] border-t border-border-subtle/50 bg-surface/30 flex flex-col justify-end pointer-events-auto">
         <ChatInput onsubmit={sendMessage} />
       </div>
     {:else}
