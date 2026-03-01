@@ -338,10 +338,12 @@ async def respond(
     # Look up by task_id first, then fall back to scanning all tasks for the agent_id.
     # This handles cases where the server reloaded and the task_id mapping was lost.
     target = None
-    for agent in state.agents:
-        if agent.id == agent_id:
-            target = agent
-            break
+    state = tasks.get(task_id)
+    if state:
+        for agent in state.agents:
+            if agent.id == agent_id:
+                target = agent
+                break
 
     if not target:
         # Fallback: search all tasks for this agent_id
