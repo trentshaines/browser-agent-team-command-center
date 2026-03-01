@@ -31,3 +31,4 @@ class AgentRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     message: Mapped["Message"] = relationship("Message", back_populates="agent_runs")
+    logs: Mapped[list["AgentRunLog"]] = relationship("AgentRunLog", back_populates="agent_run", cascade="all, delete-orphan")

@@ -33,6 +33,11 @@ def get_session_factory():
     return _session_factory
 
 
+def AsyncSessionLocal() -> AsyncSession:
+    """Return a new AsyncSession. Use as: async with AsyncSessionLocal() as db: ..."""
+    return get_session_factory()()
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with get_session_factory()() as session:
         try:
