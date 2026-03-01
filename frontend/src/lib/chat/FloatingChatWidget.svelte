@@ -1,5 +1,4 @@
 <script lang="ts">
-  import ChatInput from '$lib/components/ChatInput.svelte';
   import WidgetMessageBubble from './WidgetMessageBubble.svelte';
   import type { WidgetMessage } from './types';
 
@@ -17,6 +16,9 @@
 
   const AGENT_NAMES = ['Kelly Agent', 'James Agent'] as const;
   let agentIndex = $state(0);
+
+  let inputValue = $state('');
+  let inputEl: HTMLInputElement;
 
   let chatMessages = $state<WidgetMessage[]>([
     {
@@ -73,6 +75,17 @@
     };
     chatMessages = [...chatMessages, assistantMsg];
   }
+
+  function onInputKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const trimmed = inputValue.trim();
+      if (!trimmed) return;
+      sendMessage(trimmed);
+      inputValue = '';
+      inputEl?.focus();
+    }
+  }
 </script>
 
 <div
@@ -90,15 +103,15 @@
   </div>
 
   <!-- Tabs -->
-  <header class="shrink-0 border-b border-border-subtle/50 bg-surface/40 px-3 py-2">
-    <div class="flex rounded-xl bg-surface-hover/60 p-0.5" role="tablist">
+  <header class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5">
+    <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
       <button
         type="button"
         role="tab"
         aria-selected={activeTab === 'chat'}
-        class="flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors {activeTab ===
+        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 {activeTab ===
         'chat'
-          ? 'bg-white text-text shadow-sm'
+          ? 'bg-surface-hover text-text shadow-sm'
           : 'text-text-muted hover:text-text'}"
         onclick={() => (activeTab = 'chat')}
       >
@@ -108,9 +121,9 @@
         type="button"
         role="tab"
         aria-selected={activeTab === 'history'}
-        class="flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors {activeTab ===
+        class="flex-1 py-1.5 px-3 rounded-xl text-sm font-medium transition-all duration-150 {activeTab ===
         'history'
-          ? 'bg-white text-text shadow-sm'
+          ? 'bg-surface-hover text-text shadow-sm'
           : 'text-text-muted hover:text-text'}"
         onclick={() => (activeTab = 'history')}
       >
@@ -129,8 +142,17 @@
           <WidgetMessageBubble message={msg} senderName={msg.senderName} />
         {/each}
       </div>
-      <div class="shrink-0 min-h-[88px] border-t border-border-subtle/50 bg-surface/30 flex flex-col justify-end pointer-events-auto">
-        <ChatInput onsubmit={sendMessage} />
+      <div class="shrink-0 border-t border-border-subtle/50 px-3 py-3">
+        <div class="flex items-center gap-2 rounded-2xl bg-surface border border-border-subtle px-4 py-2.5 focus-within:border-border transition-colors">
+          <input
+            bind:this={inputEl}
+            bind:value={inputValue}
+            onkeydown={onInputKeydown}
+            type="text"
+            placeholder="Message the team..."
+            class="flex-1 bg-transparent text-sm text-text placeholder:text-text-faint outline-none"
+          />
+        </div>
       </div>
     {:else}
       <div
