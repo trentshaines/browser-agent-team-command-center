@@ -10,6 +10,9 @@
 
   type Corner = 'se' | 'sw' | 'ne' | 'nw';
 
+  // Shared across all tile instances — incremented each time any tile is focused.
+  let zCounter = 1;
+
   let {
     /** Override image source (e.g. for live screenshots). Defaults to static tile asset. */
     src = defaultTileImage,
@@ -54,6 +57,13 @@
   const [arW, arH] = aspectRatio.split('/').map(Number);
   const ratio = arW / arH; // width / height (e.g. 16/9 ≈ 1.778)
 
+  // — Bring to front —
+  let tileZ = $state(1);
+
+  function bringToFront() {
+    tileZ = ++zCounter;
+  }
+
   // — Expand modal —
   let isOpen = $state(false);
   let chatScrollEl = $state<HTMLDivElement | null>(null);
@@ -91,6 +101,7 @@
   let dragStart = $state<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
   function onPointerDown(e: PointerEvent) {
+    bringToFront();
     if (!draggable || (e.button !== undefined && e.button !== 0)) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     isDragging = true;
@@ -287,7 +298,7 @@
 <div
   bind:this={containerEl}
   class={cn('relative', className)}
-  style="position: absolute; left: {initialLeft}px; top: {initialTop}px; {resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px); z-index: {isDragging || isResizing ? 9999 : 1};"
+  style="position: absolute; left: {initialLeft}px; top: {initialTop}px; {resizeWidth != null ? `width: ${resizeWidth}px;` : ''} aspect-ratio: {aspectRatio}; transform: translate({dragOffset.x}px, {dragOffset.y}px); z-index: {isDragging || isResizing ? 9999 : tileZ};"
   role="group"
 >
   <div
