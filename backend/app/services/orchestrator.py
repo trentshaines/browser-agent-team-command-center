@@ -82,9 +82,9 @@ async def _run_with_sdk(
 
     BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a headless browser.
 
-Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
+Run: uv run python scripts/browser_agent.py --task "<exact task>" --session-id {session_id_str}
 
-The script is at ../scripts/browser_agent.py relative to the backend/ working directory.
+The script is at scripts/browser_agent.py relative to the backend/ working directory.
 The browser runs headlessly and streams screenshots back to the user in real time. You can:
 - Navigate to any URL and extract text, tables, prices, listings
 - Click buttons, links, and UI elements
