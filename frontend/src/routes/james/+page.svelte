@@ -2,7 +2,7 @@
   import { PlusIcon } from "lucide-svelte";
   import { FloatingChatWidget } from "$lib/chat";
   import { AgentBrowserWindowTile } from "$lib/components/AgentBrowserWindowTile";
-  import SpawnAgentModal from "$lib/components/SpawnAgentModal.svelte";
+  import CreateProjectModal from "$lib/components/CreateProjectModal.svelte";
 
   type Agent = { name: string; status: string };
 
@@ -12,11 +12,7 @@
     { name: 'Sam Agent',   status: 'Blocked' },
   ]);
 
-  let spawnModalOpen = $state(false);
-
-  function handleSpawn(name: string, _task: string) {
-    agents = [...agents, { name, status: 'In-Progress' }];
-  }
+  let createModalOpen = $state(false);
 </script>
 
 <svelte:head>
@@ -27,9 +23,9 @@
   <header class="relative flex items-center justify-center border-b border-border-subtle bg-surface/50 px-6 py-4">
     <span class="font-semibold text-text">Windows</span>
     <button
-      onclick={() => (spawnModalOpen = true)}
+      onclick={() => (createModalOpen = true)}
       class="absolute right-6 flex items-center justify-center w-8 h-8 rounded-lg text-text-muted hover:text-text hover:bg-surface-hover transition-colors"
-      aria-label="Spawn new agent"
+      aria-label="New project"
     >
       <PlusIcon size={18} />
     </button>
@@ -43,11 +39,7 @@
     </div>
   </main>
 
-  <FloatingChatWidget onSpawnAgent={() => (spawnModalOpen = true)} />
+  <FloatingChatWidget />
 </div>
 
-<SpawnAgentModal
-  isOpen={spawnModalOpen}
-  onClose={() => (spawnModalOpen = false)}
-  onSpawn={handleSpawn}
-/>
+<CreateProjectModal isOpen={createModalOpen} onClose={() => (createModalOpen = false)} />
