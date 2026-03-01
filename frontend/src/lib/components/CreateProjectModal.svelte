@@ -61,8 +61,12 @@
     fileInputEl?.click();
   }
 
+  let fileUploadError = $state<string | null>(null);
+
   async function uploadToConvex(file: File): Promise<UploadedFile> {
     if (!convex) throw new Error('Convex not configured');
+
+    const mimeType = file.type || 'application/octet-stream';
 
     // 1. Get a short-lived upload URL
     const uploadUrl = await convex.mutation(api.files.generateUploadUrl, {});
@@ -70,10 +74,13 @@
     // 2. POST the file to Convex storage
     const res = await fetch(uploadUrl, {
       method: 'POST',
-      headers: { 'Content-Type': file.type },
+      headers: { 'Content-Type': mimeType },
       body: file,
     });
-    if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`Upload failed (${res.status}): ${errText}`);
+    }
     const { storageId } = await res.json();
 
     // 3. Save the file reference in the DB
@@ -81,7 +88,7 @@
       storageId,
       name: file.name,
       size: file.size,
-      type: file.type,
+      type: mimeType,
     });
 
     return { fileId, storageId, name: file.name, size: file.size, uploading: false };
@@ -89,9 +96,10 @@
 
   async function handleFileChange(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
-    if (!input.files || !convex) return;
+    if (!input.files) return;
     const files = Array.from(input.files);
     input.value = '';
+    fileUploadError = null;
 
     for (const file of files) {
       // Add a placeholder entry showing upload in progress
@@ -111,6 +119,7 @@
       } catch (err) {
         // Remove the failed placeholder
         uploadedFiles = uploadedFiles.filter((_, i) => i !== idx);
+        fileUploadError = err instanceof Error ? err.message : 'File upload failed';
         console.error('File upload failed:', err);
       }
     }
@@ -197,6 +206,7 @@
     planning_loading = false;
     launching = false;
     planError = null;
+    fileUploadError = null;
     currentSuggestion = '';
     uploadedFiles = [];
   }
@@ -354,6 +364,10 @@
 
             {#if planError}
               <p class="text-xs text-danger">{planError}</p>
+            {/if}
+
+            {#if fileUploadError}
+              <p class="text-xs text-danger">{fileUploadError}</p>
             {/if}
 
             <!-- Hidden file input -->
