@@ -432,9 +432,12 @@ def check_file_store(handoff_reason: str) -> str | None:
 # Task decomposition & summarisation
 # ---------------------------------------------------------------------------
 
-def task_refiner(prompt: str) -> list[str]:
-	"""Decompose a user goal into independent, parallelisable browser-agent tasks."""
-	text = _bedrock_call(
+def task_refiner(prompt: str) -> dict[str, Any]:
+	"""Decompose a user goal into independent, parallelisable browser-agent tasks.
+
+	Returns a dict with 'title' (str | None) and 'agents' (list of {name, task} dicts).
+	"""
+	text = _bedrock_call_haiku(
 		system_prompt=(
 			"You are a task planner for a system that dispatches multiple BROWSER AGENTS "
 			"in parallel. Each agent gets its own full browser and acts autonomously.\n\n"
@@ -458,18 +461,35 @@ def task_refiner(prompt: str) -> list[str]:
 			"- Maximum 5 agents.\n"
 			"- When in doubt, use fewer agents. One agent doing everything is better than "
 			"multiple agents doing fragments.\n\n"
-			"Return your response as a JSON array of strings (task descriptions).\n"
-			"Return ONLY the JSON array, nothing else."
+			"Return a JSON object with:\n"
+			"- \"title\": a short project title (max 8 words)\n"
+			"- \"agents\": an array of objects, each with:\n"
+			"  - \"name\": a short, creative, descriptive agent name (e.g. \"Amazon Scout\", \"Yelp Explorer\")\n"
+			"  - \"task\": a specific, actionable browser task description\n\n"
+			"Return ONLY valid JSON, no markdown fences or explanation."
 		),
 		user_message=prompt,
+		max_tokens=1024,
 	)
 	try:
-		tasks = json.loads(text)
+		result = json.loads(text)
 	except json.JSONDecodeError:
-		return [prompt]
-	if not isinstance(tasks, list) or not tasks:
-		return [prompt]
-	return [str(t) for t in tasks[:5]]
+		return {"title": None, "agents": [{"name": "Browser Agent", "task": prompt}]}
+	# Support both the new {title, agents} format and legacy array format
+	if isinstance(result, dict) and "agents" in result:
+		agents = result["agents"]
+		title = result.get("title")
+		if isinstance(agents, list) and agents:
+			return {
+				"title": title,
+				"agents": [{"name": a.get("name", f"Agent {i+1}"), "task": a.get("task", "")} for i, a in enumerate(agents)][:5],
+			}
+	if isinstance(result, list) and result:
+		return {
+			"title": None,
+			"agents": [{"name": f"Agent {i+1}", "task": str(t)} for i, t in enumerate(result)][:5],
+		}
+	return {"title": None, "agents": [{"name": "Browser Agent", "task": prompt}]}
 
 
 def summarize_results(original_goal: str, agents: list[Any]) -> str:

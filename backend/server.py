@@ -196,13 +196,14 @@ async def _run_task(task_id: str, session_id: str) -> None:
 
 @app.post("/plan", response_model=PlanResponse)
 async def plan_task(req: PlanRequest):
-    """Decompose a prompt into parallelisable agent tasks."""
-    subtasks = task_refiner(req.prompt)
-    agents = [{"name": f"Agent {i+1}", "task": t} for i, t in enumerate(subtasks)]
-    title = req.prompt[:60].strip()
-    if len(req.prompt) > 60:
-        title += "…"
-    return PlanResponse(title=title, agents=agents)
+    """Decompose a prompt into parallelisable agent tasks using Haiku."""
+    refined = task_refiner(req.prompt)
+    title = refined["title"]
+    if not title:
+        title = req.prompt[:60].strip()
+        if len(req.prompt) > 60:
+            title += "…"
+    return PlanResponse(title=title, agents=refined["agents"])
 
 
 @app.post("/sessions/{session_id}/task")
@@ -223,8 +224,8 @@ async def create_session_task(session_id: str, req: CreateTaskRequest):
     if req.agents:
         agent_specs = [(a.name, a.task) for a in req.agents]
     else:
-        subtasks = task_refiner(req.prompt)
-        agent_specs = [(f"Agent {i+1}", t) for i, t in enumerate(subtasks)]
+        refined = task_refiner(req.prompt)
+        agent_specs = [(a["name"], a["task"]) for a in refined["agents"]]
 
     for name, task_prompt in agent_specs:
         agent = orch.add_prompt(task_prompt, name=name)
