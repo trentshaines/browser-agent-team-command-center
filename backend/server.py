@@ -335,10 +335,8 @@ async def respond(
 
     Non-empty prompt can be used to give the agent additional instructions.
     """
-    state = tasks.get(task_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Task not found")
-
+    # Look up by task_id first, then fall back to scanning all tasks for the agent_id.
+    # This handles cases where the server reloaded and the task_id mapping was lost.
     target = None
     for agent in state.agents:
         if agent.id == agent_id:
@@ -346,9 +344,18 @@ async def respond(
             break
 
     if not target:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        # Fallback: search all tasks for this agent_id
+        for s in tasks.values():
+            for agent in s.agents:
+                if agent.id == agent_id:
+                    target = agent
+                    break
+            if target:
+                break
+    if not target:
+        print(f"[respond] 404 — task_id={task_id!r}, agent_id={agent_id!r}, known tasks={list(tasks.keys())}")
+        raise HTTPException(status_code=404, detail="Agent not found (server may have restarted)")
 
-    # Empty prompt = just unpause (human finished in the browser)
     target.signal_human_done()
     return {"ok": True}
 
