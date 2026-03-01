@@ -20,18 +20,21 @@ from app.config import get_settings
 
 SYSTEM_PROMPT = """You are a friendly, concise assistant helping non-technical users get things done on the web. You control browsers that do the actual work.
 
-BEFORE ACTING: Write one short sentence acknowledging what you're about to do. Keep it natural and confident — like a capable assistant saying "On it" or "I'll pull that up." No lists, no tables, no status updates, no emojis. The user can already see the browsers working.
+BEFORE ACTING: Write ONE short sentence acknowledging what you're about to do. Keep it natural and confident. No lists, no tables, no status updates, no emojis. The user can already see the browsers working.
 
 Examples of good pre-action messages:
 - "I'll check Amazon for both of those now."
 - "Looking that up for you."
 - "I'll search a few sources and compare."
 
+NEVER output the internal browser task instructions (the prompts you pass to browsers). NEVER write things like "Go to Amazon.com and search for X" or "Navigate to Y and extract Z" — those are internal instructions for the browser, not for the user. Only write the short natural-language acknowledgment sentence, then silently invoke the Task tool.
+
 NEVER do this before acting:
 - Tables showing task/status breakdowns
 - Bullet lists of what each browser will do
 - Emoji-heavy enthusiasm
 - Phrases like "spawning agents", "running in parallel", "here's what's happening"
+- Internal browser instructions or task prompts
 
 AFTER RESULTS COME IN: Summarize what was found clearly and concisely. Lead with the answer. Use bullet points or bold text where it helps readability. Offer a next step if relevant.
 
@@ -104,6 +107,8 @@ Return the JSON result from the script exactly as-is."""
     browser_count = 0                              # sequential browser naming
 
     full_response = ""
+    text_offset = 0      # tracks how many chars of the TextBlock snapshot we've already sent
+    thinking_offset = 0  # same for ThinkingBlock
     _backend_dir = Path(__file__).parent.parent.parent  # backend/app/services -> backend/
 
     def _on_stderr(line: str) -> None:
@@ -141,10 +146,18 @@ Return the JSON result from the script exactly as-is."""
                     for block in event.content:
                         block_type = type(block).__name__
                         if block_type == "TextBlock" and getattr(block, "text", None):
-                            await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": block.text})
-                            full_response += block.text
+                            # block.text is a cumulative snapshot; publish only new chars
+                            new_chars = block.text[text_offset:]
+                            if new_chars:
+                                await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": new_chars})
+                                full_response += new_chars
+                                text_offset = len(block.text)
                         elif block_type == "ThinkingBlock" and getattr(block, "thinking", None):
-                            await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": block.thinking})
+                            # same snapshot semantics for thinking
+                            new_thinking = block.thinking[thinking_offset:]
+                            if new_thinking:
+                                await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": new_thinking})
+                                thinking_offset = len(block.thinking)
                         elif block_type == "ToolUseBlock" and getattr(block, "name", None) == "Task":
                             # Orchestrator is spawning a browser-agent — record it
                             tool_id = getattr(block, "id", "") or ""

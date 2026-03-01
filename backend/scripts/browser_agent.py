@@ -62,19 +62,21 @@ def _emit(data: dict) -> None:
 
 
 async def _post_internal(path: str, payload: dict) -> None:
-    """POST to a FastAPI internal endpoint. Fire-and-forget — swallows all errors."""
+    """POST to a FastAPI internal endpoint. Logs errors to stderr but never raises."""
     port = os.environ.get("PORT", "8000")
     backend_url = os.environ.get("BACKEND_URL", f"http://localhost:{port}")
     token = os.environ.get("INTERNAL_API_TOKEN", "")
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            await client.post(
+            resp = await client.post(
                 f"{backend_url}{path}",
                 headers={"X-Internal-Token": token},
                 json=payload,
             )
-    except Exception:
-        pass
+            if resp.status_code >= 400:
+                print(f"[internal] POST {path} -> {resp.status_code}: {resp.text[:200]}", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[internal] POST {path} failed: {e}", file=sys.stderr, flush=True)
 
 
 async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
@@ -86,6 +88,20 @@ async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None
 
 async def _post_event(session_id: str, payload: dict) -> None:
     await _post_internal("/internal/agent-event", {"session_id": session_id, **payload})
+
+
+async def _stream_frames(agent, session_id: str, agent_id: str, stop_event: asyncio.Event) -> None:
+    """Continuously capture and stream screenshots until stop_event is set (~0.67 fps)."""
+    step = 0
+    while not stop_event.is_set():
+        try:
+            jpeg = await agent.browser_session.take_screenshot(format="jpeg", quality=40)
+            b64 = base64.b64encode(jpeg).decode()
+            await _post_frame(session_id, agent_id, step, None, b64)
+            step += 1
+        except Exception:
+            pass
+        await asyncio.sleep(1.5)
 
 
 async def run_task(task: str, model: str, headless: bool, session_id: str | None = None) -> dict:
@@ -160,15 +176,6 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
 
         # Stream to FastAPI if session_id provided
         if session_id:
-            screenshot_b64 = None
-            try:
-                page = await agent.browser.get_current_page()
-                jpeg = await page.screenshot(type="jpeg", quality=40)
-                screenshot_b64 = base64.b64encode(jpeg).decode()
-            except Exception as e:
-                print(f"[frame] Screenshot capture failed at step {step_num}: {e}", file=sys.stderr, flush=True)
-            if screenshot_b64:
-                await _post_frame(session_id, agent_id, step_num, url, screenshot_b64)
             await _post_event(session_id, {
                 "type": "agent_log",
                 "agent_id": agent_id,
@@ -201,6 +208,12 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             "duration_seconds": duration_seconds,
         })
 
+    stop_event = asyncio.Event()
+    if session_id:
+        frame_task = asyncio.create_task(
+            _stream_frames(agent, session_id, agent_id, stop_event)
+        )
+
     try:
         result = await agent.run(on_step_end=on_step_end)
         outcome = {
@@ -231,6 +244,10 @@ async def run_task(task: str, model: str, headless: bool, session_id: str | None
             "task": task,
             "error": str(e),
         }
+    finally:
+        stop_event.set()
+        if session_id:
+            await frame_task
 
 
 def main():

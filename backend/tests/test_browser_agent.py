@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # browser_agent.py lives in scripts/ — add to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 import browser_agent  # noqa: E402
 
 
@@ -69,7 +69,7 @@ async def test_post_frame_logs_4xx(monkeypatch, capsys):
         await browser_agent._post_frame("s", "a", 1, None, "x")
 
     captured = capsys.readouterr()
-    assert "[frame]" in captured.err
+    assert "[internal]" in captured.err
     assert "403" in captured.err
 
 
@@ -91,7 +91,7 @@ async def test_post_frame_logs_network_error(monkeypatch, capsys):
         await browser_agent._post_frame("s", "a", 1, None, "x")  # must not raise
 
     captured = capsys.readouterr()
-    assert "[frame]" in captured.err
+    assert "[internal]" in captured.err
 
 
 # ---------------------------------------------------------------------------
