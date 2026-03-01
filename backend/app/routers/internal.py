@@ -20,9 +20,9 @@ class AgentFrameData(BaseModel):
     screenshot: str | None = Field(None, max_length=500_000)  # ~375 KB base64 limit
 
 
-async def verify_internal_token(x_internal_token: Annotated[str, Header()]) -> None:
+async def verify_internal_token(x_internal_token: Annotated[str, Header()] = "") -> None:
     settings = get_settings()
-    if not settings.internal_api_token or x_internal_token != settings.internal_api_token:
+    if settings.internal_api_token and x_internal_token != settings.internal_api_token:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
