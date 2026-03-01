@@ -126,9 +126,17 @@
 </script>
 
 <div
-  class="fixed flex flex-col rounded-3xl border border-white/60 bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden z-50 backdrop-blur-sm"
-  style="width: {widgetW}px; height: {widgetH}px; top: {widgetTop}px; left: {widgetLeft}px"
+  class="fixed z-50 select-none"
+  style="top: {widgetTop}px; left: {widgetLeft}px"
 >
+  <!-- Glass border pane — sits behind the widget, bleeds out on all sides -->
+  <div class="absolute -inset-3 rounded-[2.25rem] backdrop-blur-xl bg-white/20 border border-white/50 shadow-[0_20px_64px_rgba(0,0,0,0.18)]" />
+
+  <!-- Widget -->
+  <div
+    class="relative flex flex-col rounded-3xl bg-white/95 overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+    style="width: {widgetW}px; height: {widgetH}px"
+  >
   <!-- Invisible top-edge resize handle -->
   <div
     role="separator"
@@ -139,7 +147,7 @@
 
   <!-- Tabs / drag handle -->
   <header
-    class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5 {moveStart ? 'cursor-grabbing' : 'cursor-grab'} select-none"
+    class="shrink-0 border-b border-border-subtle/50 px-3 py-2.5 {moveStart ? 'cursor-grabbing' : 'cursor-grab'}"
     onpointerdown={onHeaderDown}
   >
     <div class="flex rounded-2xl bg-surface p-1 gap-0.5" role="tablist">
@@ -202,5 +210,6 @@
         </p>
       </div>
     {/if}
+  </div>
   </div>
 </div>
