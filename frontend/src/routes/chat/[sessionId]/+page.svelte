@@ -6,6 +6,7 @@
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AgentRunPanel, { type AgentRun } from '$lib/components/AgentRunPanel.svelte';
+  import AgentTiles from '$lib/components/AgentTiles.svelte';
 
   let sessionId = $derived(page.params.sessionId!);
   let messageList = $state<Message[]>([]);
@@ -17,6 +18,13 @@
 
   // Agent run tracking
   let agentRuns = $state<AgentRun[]>([]);
+
+  // Live screenshot frames per agent (keyed by agent_id from browser_agent.py)
+  let agentFrames = $state<Record<string, { step: number | null; url: string | null; screenshot: string | null; done: boolean }>>({});
+
+  // Thinking content per message (messageId -> accumulated text)
+  let thinkingMap = $state<Map<string, string>>(new Map());
+  let thinkingDoneSet = $state<Set<string>>(new Set());
 
   // Stale-request guard: incremented on each loadMessages call so an in-flight
   // fetch from a previous session cannot overwrite state for the current one.
@@ -46,6 +54,8 @@
     error = null;
     autoScroll = true;
     agentRuns = [];
+    thinkingMap = new Map();
+    thinkingDoneSet = new Set();
     closeSSE();
     try {
       const result = await messagesApi.list(id);
@@ -80,11 +90,30 @@
       applyDelta(data.message_id, data.delta);
     });
 
+    eventSource.addEventListener('thinking_delta', (e) => {
+      const data = JSON.parse(e.data);
+      const mid = data.message_id as string;
+      const prev = thinkingMap.get(mid) ?? '';
+      const isFirst = prev === '';
+      thinkingMap = new Map([...thinkingMap, [mid, prev + data.thinking]]);
+      // Force scroll when thinking block first appears (it adds height to the page)
+      if (isFirst) scrollToBottom(true);
+      else scrollToBottom();
+    });
+
     eventSource.addEventListener('done', (e) => {
       const data = JSON.parse(e.data);
       finalizeMessage(data.message_id, data.content);
+      // Mark thinking done for this message
+      if (thinkingMap.has(data.message_id)) {
+        thinkingDoneSet = new Set([...thinkingDoneSet, data.message_id]);
+      }
       streaming = false;
       sessionsStore.bumpUpdated(id);
+      // Mark all agent tiles as done
+      agentFrames = Object.fromEntries(
+        Object.entries(agentFrames).map(([aid, f]) => [aid, { ...f, done: true }])
+      );
     });
 
     eventSource.addEventListener('agent_event', (e) => {
@@ -114,6 +143,20 @@
           : r
       );
       scrollToBottom();
+    });
+
+    eventSource.addEventListener('agent_frame', (e) => {
+      const data = JSON.parse(e.data);
+      const isFirstFrame = !agentFrames[data.agent_id];
+      agentFrames[data.agent_id] = {
+        step: data.step,
+        url: data.url,
+        screenshot: data.screenshot,
+        done: false,
+      };
+      // When the tile panel appears for the first time it shrinks the viewport —
+      // force scroll so content stays visible.
+      if (isFirstFrame) scrollToBottom(true);
     });
 
     eventSource.addEventListener('error_event', () => {
@@ -153,6 +196,9 @@
     streaming = true;
     error = null;
     agentRuns = [];
+    agentFrames = {};
+    thinkingMap = new Map();
+    thinkingDoneSet = new Set();
     autoScroll = true;
 
     try {
@@ -204,12 +250,19 @@
         </div>
       {:else}
         {#each messageList as message (message.id)}
-          <MessageBubble {message} />
+          <MessageBubble
+            {message}
+            thinking={thinkingMap.get(message.id) ?? ''}
+            thinkingDone={thinkingDoneSet.has(message.id)}
+          />
         {/each}
         <AgentRunPanel runs={agentRuns} />
       {/if}
     </div>
   </div>
+
+  <!-- Agent screenshot tiles -->
+  <AgentTiles frames={agentFrames} />
 
   <!-- Input -->
   <ChatInput

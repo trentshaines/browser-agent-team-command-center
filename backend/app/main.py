@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import auth, sessions, messages
+from app.routers import auth, sessions, messages, internal
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(messages.router, prefix="/sessions", tags=["messages"])
+app.include_router(internal.router, prefix="/internal", tags=["internal"])
 
 
 @app.get("/health")

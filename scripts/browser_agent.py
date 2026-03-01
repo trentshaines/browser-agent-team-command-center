@@ -3,11 +3,14 @@
 
 import argparse
 import asyncio
+import base64
 import json
 import os
 import sys
+import uuid
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -58,9 +61,23 @@ def _emit(data: dict) -> None:
     print(json.dumps(data, default=str), flush=True)
 
 
-async def run_task(task: str, model: str, headless: bool) -> dict:
+async def _post_frame(session_id: str, agent_id: str, step: int, url: str | None, screenshot_b64: str) -> None:
+    """POST a screenshot frame to the FastAPI internal endpoint."""
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            await client.post(
+                "http://localhost:8000/internal/agent-frame",
+                json={"session_id": session_id, "agent_id": agent_id, "step": step, "url": url, "screenshot": screenshot_b64},
+            )
+    except Exception:
+        pass
+
+
+async def run_task(task: str, model: str, headless: bool, session_id: str | None = None) -> dict:
     """Run a browser-use agent with the given task, emitting step logs as JSONL."""
     from browser_use import Agent, BrowserProfile
+
+    agent_id = str(uuid.uuid4())
 
     try:
         llm = create_llm(model)
@@ -72,7 +89,7 @@ async def run_task(task: str, model: str, headless: bool) -> dict:
 
     async def on_step_end(agent: "Agent") -> None:
         """Emit a browser_step JSONL record after each step completes."""
-        history = agent.history
+        history = agent.history.history if hasattr(agent.history, 'history') else list(agent.history)
         if not history:
             return
         last = history[-1]
@@ -117,6 +134,18 @@ async def run_task(task: str, model: str, headless: bool) -> dict:
             except Exception:
                 pass
 
+        # Capture screenshot and stream to FastAPI if session_id provided
+        if session_id:
+            screenshot_b64 = None
+            try:
+                page = await agent.browser.get_current_page()
+                jpeg = await page.screenshot(type="jpeg", quality=40)
+                screenshot_b64 = base64.b64encode(jpeg).decode()
+            except Exception:
+                pass
+            if screenshot_b64:
+                await _post_frame(session_id, agent_id, step_num, url, screenshot_b64)
+
         _emit({
             "type": "browser_step",
             "step": step_num,
@@ -156,12 +185,13 @@ def main():
     parser.add_argument("--task", required=True, help="Natural language task for the browser agent")
     parser.add_argument("--model", default=None, help="Model to use")
     parser.add_argument("--visible", action="store_true", help="Show the browser window")
+    parser.add_argument("--session-id", default=None, help="Session ID for screenshot streaming")
     args = parser.parse_args()
 
     model = args.model or os.environ.get("BROWSER_AGENT_MODEL", "google/gemini-2.0-flash-001")
     headless = not args.visible
 
-    result = asyncio.run(run_task(args.task, model, headless))
+    result = asyncio.run(run_task(args.task, model, headless, session_id=args.session_id))
     # Final result line — always last
     _emit({"type": "browser_result", **result})
     sys.exit(0 if result["success"] else 1)

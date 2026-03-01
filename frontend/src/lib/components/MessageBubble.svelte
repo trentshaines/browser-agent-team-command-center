@@ -1,8 +1,17 @@
 <script lang="ts">
   import { marked } from 'marked';
   import type { Message } from '$lib/api';
+  import ThinkingBlock from './ThinkingBlock.svelte';
 
-  let { message }: { message: Message } = $props();
+  let {
+    message,
+    thinking = '',
+    thinkingDone = false,
+  }: {
+    message: Message;
+    thinking?: string;
+    thinkingDone?: boolean;
+  } = $props();
 
   const html = $derived(
     message.role === 'assistant' && message.content
@@ -19,10 +28,11 @@
   </div>
 {:else}
   <div class="flex justify-start mb-4">
-    <div class="max-w-[85%] text-text text-sm">
+    <div class="max-w-[85%] text-text text-sm w-full">
+      <ThinkingBlock content={thinking} done={thinkingDone} />
       {#if message.content}
         <div class="prose">{@html html}</div>
-      {:else}
+      {:else if !thinking}
         <div class="flex items-center gap-1.5 text-text-faint">
           <span class="animate-pulse">●</span>
           <span class="animate-pulse" style="animation-delay:0.15s">●</span>

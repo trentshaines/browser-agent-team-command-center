@@ -68,10 +68,11 @@ async def _run_with_sdk(
 ) -> None:
     from claude_agent_sdk import query, ClaudeAgentOptions, AgentDefinition, HookMatcher
 
-    BROWSER_AGENT_PROMPT = """You are a browser agent. You take real actions on the web using a visible browser.
+    BROWSER_AGENT_PROMPT = f"""You are a browser agent. You take real actions on the web using a visible browser.
 
-Run: python scripts/browser_agent.py --task "<exact task>" --visible
+Run: uv run python ../scripts/browser_agent.py --task "<exact task>" --visible --session-id {session_id_str}
 
+The script is at ../scripts/browser_agent.py relative to the backend/ working directory.
 The browser opens visibly so the user can watch. You can:
 - Navigate to any URL and extract text, tables, prices, listings
 - Click buttons, links, and UI elements
@@ -192,9 +193,11 @@ Return the JSON result from the script exactly as-is."""
             },
         ),
     ):
-        if hasattr(event, "text"):
+        if hasattr(event, "text") and event.text:
             await sse.publish(session_id_str, "delta", {"message_id": str(message_id), "delta": event.text})
             full_response += event.text
+        elif hasattr(event, "thinking") and event.thinking:
+            await sse.publish(session_id_str, "thinking_delta", {"message_id": str(message_id), "thinking": event.thinking})
 
     await _save_and_complete(session_id_str, message_id, full_response, db)
 

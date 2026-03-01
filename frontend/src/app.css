@@ -120,3 +120,21 @@ body {
   text-align: left;
 }
 .prose th { background: var(--surface-hover); }
+
+/* Agent tiles slide-in animation */
+@keyframes agentTilesIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.agent-tiles-panel {
+  animation: agentTilesIn 0.18s ease-out;
+}
+
+/* Smooth scroll behavior for chat */
+.chat-scroll {
+  scroll-behavior: smooth;
+}
+
+/* Thinking block scrollbar */
+.thinking-scroll::-webkit-scrollbar { width: 3px; }
+.thinking-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

@@ -6,6 +6,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "browser-use>=0.2.0",
     "claude-agent-sdk>=0.1.44",
+    "httpx>=0.28.1",
     "langchain-openai>=0.3.0",
     "playwright>=1.40.0",
 ]
